@@ -51,3 +51,4 @@ class DataAgentState(TypedDict):
     sql: str
 
     error: str                                               # 校验sql时出现的错误信息
+    retry_count: int                                         # sql校正次数

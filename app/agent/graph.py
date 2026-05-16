@@ -58,11 +58,18 @@ graph_builder.add_edge("filter_metric", "add_extra_context")
 graph_builder.add_edge("add_extra_context", "generate_sql")
 graph_builder.add_edge("generate_sql", "validate_sql")
 # 添加有条件的边
+def should_continue(state: DataAgentState):
+    if state['error'] is None:
+        return "run_sql"
+    if state.get('retry_count', 0) < 3:
+        return "correct_sql"
+    return "run_sql"
+
 graph_builder.add_conditional_edges(source="validate_sql",
-                                    path= lambda state: "run_sql" if state['error'] is None else "correct_sql",
-                                    path_map = {"run_sql": "run_sql", "correct_sql": "correct_sql"}
+                                    path=should_continue,
+                                    path_map={"run_sql": "run_sql", "correct_sql": "correct_sql"}
                                     )
-graph_builder.add_edge("correct_sql", "run_sql")
+graph_builder.add_edge("correct_sql", "validate_sql")
 graph_builder.add_edge("run_sql", END)
 
 graph = graph_builder.compile()
