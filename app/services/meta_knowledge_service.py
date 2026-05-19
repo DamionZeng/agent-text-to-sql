@@ -197,6 +197,21 @@ class MetaKnowledgeService:
             await self._save_metrics_to_qdrant(metric_infos)
             logger.info("指标信息向量化成功")
 
-
+    async def build_from_config(self, meta_config: MetaConfig):
+        """直接从 MetaConfig 对象构建知识库（无需配置文件）"""
+        logger.info("开始从配置对象构建知识库")
+        if meta_config.tables:
+            column_infos = await self._save_tables_to_meta_db(meta_config)
+            logger.info("保存表信息和字段信息到数据库成功")
+            await self._save_columns_to_qdrant(column_infos)
+            logger.info("字段信息向量索引success")
+            await self._save_values_to_es(meta_config)
+            logger.info("全文索引success")
+        if meta_config.metrics:
+            metric_infos = await self._save_metrics_to_meta_db(meta_config)
+            logger.info("指标信息入库成功")
+            await self._save_metrics_to_qdrant(metric_infos)
+            logger.info("指标信息向量化成功")
+        logger.info("知识库构建完成")
 
 

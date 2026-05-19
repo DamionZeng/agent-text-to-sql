@@ -15,6 +15,10 @@ async def lifespan(app: FastAPI):
     es_client_manager.init()
     meta_mysql_client_manager.init()
     dw_mysql_client_manager.init()
+
+    # 自动创建 meta 数据库中缺失的表
+    await _init_meta_tables()
+
     yield
     # FastAPI 应用结束前执行
 
@@ -22,3 +26,13 @@ async def lifespan(app: FastAPI):
     await es_client_manager.close()
     await meta_mysql_client_manager.close()
     await dw_mysql_client_manager.close()
+
+
+async def _init_meta_tables():
+    """自动创建 meta 数据库中所有缺失的表"""
+    from app.models.base import Base
+    from app.models.datasource import DatasourceMySQL
+    from app.models.meta_draft import MetaDraftMySQL
+
+    async with meta_mysql_client_manager.engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)

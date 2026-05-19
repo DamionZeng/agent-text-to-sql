@@ -13,7 +13,7 @@ class DatasourceRepository:
     async def create(self, datasource: Datasource) -> Datasource:
         model = DatasourceMapper.to_model(datasource)
         self.session.add(model)
-        await self.session.flush()
+        await self.session.commit()
         await self.session.refresh(model)
         return DatasourceMapper.to_entity(model)
 
@@ -31,7 +31,7 @@ class DatasourceRepository:
     async def update(self, datasource: Datasource) -> Datasource:
         model = DatasourceMapper.to_model(datasource)
         merged = await self.session.merge(model)
-        await self.session.flush()
+        await self.session.commit()
         await self.session.refresh(merged)
         return DatasourceMapper.to_entity(merged)
 
@@ -39,6 +39,6 @@ class DatasourceRepository:
         model = await self.session.get(DatasourceMySQL, datasource_id)
         if model:
             await self.session.delete(model)
-            await self.session.flush()
+            await self.session.commit()
             return True
         return False

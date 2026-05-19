@@ -58,6 +58,7 @@
       :confirmLoading="creating"
       width="560px"
       destroyOnClose
+      :footer="null"
     >
       <a-form :model="form" layout="vertical">
         <a-row :gutter="16">
@@ -105,6 +106,23 @@
             </a-form-item>
           </a-col>
         </a-row>
+
+        <a-form-item>
+          <a-alert
+            v-if="testResult"
+            :message="testResult.message"
+            :type="testResult.success ? 'success' : 'error'"
+            show-icon
+            closable
+            @close="testResult = null"
+            style="margin-bottom: 12px"
+          />
+          <a-space style="width: 100%; justify-content: flex-end;">
+            <a-button @click="showModal = false">取消</a-button>
+            <a-button @click="handleTest" :loading="testing">测试连接</a-button>
+            <a-button type="primary" @click="handleCreate" :loading="creating">创建</a-button>
+          </a-space>
+        </a-form-item>
       </a-form>
     </a-modal>
   </div>
@@ -121,6 +139,8 @@ const loading = ref(false)
 const datasources = ref([])
 const showModal = ref(false)
 const creating = ref(false)
+const testing = ref(false)
+const testResult = ref(null)
 
 const form = ref({
   name: '',
@@ -196,6 +216,28 @@ const handleDelete = async (id) => {
 
 const goToDetail = (id) => {
   router.push(`/metadata/datasources/${id}`)
+}
+
+const handleTest = async () => {
+  if (!form.value.name || !form.value.host || !form.value.database || !form.value.username || !form.value.password) {
+    message.warning('请填写完整信息后再测试')
+    return
+  }
+  testing.value = true
+  testResult.value = null
+  try {
+    const res = await fetch('/api/metadata/datasources/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form.value)
+    })
+    const data = await res.json()
+    testResult.value = data
+  } catch (e) {
+    testResult.value = { success: false, message: '测试请求失败' }
+  } finally {
+    testing.value = false
+  }
 }
 
 onMounted(fetchDatasources)
