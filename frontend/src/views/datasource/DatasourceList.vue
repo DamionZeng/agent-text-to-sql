@@ -195,7 +195,7 @@ const handleDelete = async (id) => {
 }
 
 const goToDetail = (id) => {
-  router.push(`/datasources/${id}`)
+  router.push(`/metadata/datasources/${id}`)
 }
 
 onMounted(fetchDatasources)
@@ -203,7 +203,7 @@ onMounted(fetchDatasources)
 
 <style scoped>
 .datasource-list {
-  max-width: 1200px;
+  width: 100%;
 }
 
 .page-header {

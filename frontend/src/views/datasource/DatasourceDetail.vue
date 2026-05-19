@@ -386,7 +386,7 @@ onMounted(() => {
 
 <style scoped>
 .datasource-detail {
-  max-width: 1200px;
+  width: 100%;
 }
 
 .page-header {

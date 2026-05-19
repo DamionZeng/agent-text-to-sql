@@ -2,23 +2,30 @@ import { createRouter, createWebHistory } from 'vue-router'
 import Layout from '../layouts/MainLayout.vue'
 import DatasourceList from '../views/datasource/DatasourceList.vue'
 import DatasourceDetail from '../views/datasource/DatasourceDetail.vue'
+import ChatPage from '../views/chat/ChatPage.vue'
 
 const routes = [
   {
     path: '/',
     component: Layout,
+    redirect: '/chat',
     children: [
       {
-        path: '',
-        redirect: '/datasources'
+        path: 'chat',
+        name: 'Chat',
+        component: ChatPage
       },
       {
-        path: 'datasources',
+        path: 'metadata',
+        redirect: '/metadata/datasources'
+      },
+      {
+        path: 'metadata/datasources',
         name: 'DatasourceList',
         component: DatasourceList
       },
       {
-        path: 'datasources/:id',
+        path: 'metadata/datasources/:id',
         name: 'DatasourceDetail',
         component: DatasourceDetail
       }

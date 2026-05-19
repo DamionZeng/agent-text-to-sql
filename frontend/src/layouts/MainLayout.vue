@@ -1,33 +1,49 @@
 <template>
-  <a-layout style="min-height: 100vh">
+  <a-layout style="min-height: 100vh; width: 100%;">
     <a-layout-sider
       v-model:collapsed="collapsed"
       collapsible
       :width="220"
-      style="background: #001529"
+      style="background: #001529; flex-shrink: 0;"
     >
       <div class="logo">
-        <span v-if="!collapsed">元数据管理</span>
-        <span v-else>MD</span>
+        <span v-if="!collapsed">Agent Text2SQL</span>
+        <span v-else>AI</span>
       </div>
       <a-menu
         theme="dark"
         mode="inline"
         :selectedKeys="selectedKeys"
+        :openKeys="openKeys"
+        @openChange="onOpenChange"
         style="border-right: none"
       >
-        <a-menu-item key="datasources">
-          <DatabaseOutlined />
+        <a-menu-item key="chat">
+          <CommentOutlined />
           <span>
-            <router-link to="/datasources" class="nav-link">数据源管理</router-link>
+            <router-link to="/chat" class="nav-link">智能问答</router-link>
           </span>
         </a-menu-item>
+
+        <a-sub-menu key="metadata">
+          <template #title>
+            <span>
+              <DatabaseOutlined />
+              <span>元数据管理</span>
+            </span>
+          </template>
+          <a-menu-item key="datasources">
+            <span>
+              <router-link to="/metadata/datasources" class="nav-link">数据源管理</router-link>
+            </span>
+          </a-menu-item>
+        </a-sub-menu>
       </a-menu>
     </a-layout-sider>
 
-    <a-layout>
+    <a-layout style="flex: 1; min-width: 0;">
       <a-layout-header class="layout-header">
-        <div class="header-title">Agent Text2SQL - 元数据管理系统</div>
+        <div class="header-title">{{ pageTitle }}</div>
       </a-layout-header>
 
       <a-layout-content class="layout-content">
@@ -40,17 +56,35 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { DatabaseOutlined } from '@ant-design/icons-vue'
+import { DatabaseOutlined, CommentOutlined } from '@ant-design/icons-vue'
 
 const collapsed = ref(false)
 const route = useRoute()
 const selectedKeys = ref([])
+const openKeys = ref(['metadata'])
+
+const pageTitle = computed(() => {
+  if (route.path.startsWith('/chat')) {
+    return '智能问答'
+  }
+  if (route.path.startsWith('/metadata')) {
+    return '元数据管理'
+  }
+  return 'Agent Text2SQL'
+})
+
+const onOpenChange = (keys) => {
+  openKeys.value = keys
+}
 
 watch(() => route.path, (path) => {
-  if (path.startsWith('/datasources')) {
+  if (path.startsWith('/chat')) {
+    selectedKeys.value = ['chat']
+  } else if (path.startsWith('/metadata/datasources')) {
     selectedKeys.value = ['datasources']
+    openKeys.value = ['metadata']
   }
 }, { immediate: true })
 </script>
