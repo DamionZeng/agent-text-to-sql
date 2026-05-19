@@ -10,7 +10,10 @@ class TableInfoMapper:
             id=table_info_mysql.id,
             name=table_info_mysql.name,
             role=table_info_mysql.role,
-            description=table_info_mysql.description
+            description=table_info_mysql.description,
+            alias=table_info_mysql.alias or [],
+            datasource_id=table_info_mysql.datasource_id,
+            is_active=table_info_mysql.is_active,
         )
 
     @staticmethod

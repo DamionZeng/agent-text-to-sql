@@ -1,4 +1,4 @@
-from sqlalchemy import text
+from sqlalchemy import text, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.entities.column_info import ColumnInfo
@@ -7,6 +7,8 @@ from app.entities.metric_info import MetricInfo
 from app.entities.table_info import TableInfo
 from app.models.column_info import ColumnInfoMySQL
 from app.models.table_info import TableInfoMySQL
+from app.models.metric_info import MetricInfoMySQL
+from app.models.column_metric import ColumnMetricMySQL
 from app.repositories.mysql.meta.mappers.column_info_mapper import ColumnInfoMapper
 from app.repositories.mysql.meta.mappers.column_metric_mapper import ColumnMetricMapper
 from app.repositories.mysql.meta.mappers.metric_info_mapper import MetricInfoMapper
@@ -35,6 +37,18 @@ class MetaMysqlRepository:
 
     def save_column_metrics(self, column_metrics: list[ColumnMetric]):
         self.session.add_all([ColumnMetricMapper.to_model(column_metric) for column_metric in column_metrics])
+
+    async def delete_table_infos(self, table_ids: list[str]):
+        await self.session.execute(delete(TableInfoMySQL).where(TableInfoMySQL.id.in_(table_ids)))
+
+    async def delete_column_infos_by_table_ids(self, table_ids: list[str]):
+        await self.session.execute(delete(ColumnInfoMySQL).where(ColumnInfoMySQL.table_id.in_(table_ids)))
+
+    async def delete_metric_infos(self, metric_ids: list[str]):
+        await self.session.execute(delete(MetricInfoMySQL).where(MetricInfoMySQL.id.in_(metric_ids)))
+
+    async def delete_column_metrics_by_metric_ids(self, metric_ids: list[str]):
+        await self.session.execute(delete(ColumnMetricMySQL).where(ColumnMetricMySQL.metric_id.in_(metric_ids)))
 
     async def get_column_info_by_id(self, id: str) -> ColumnInfo | None:
         column_info_mysql:ColumnInfoMySQL | None = await self.session.get(ColumnInfoMySQL, id)

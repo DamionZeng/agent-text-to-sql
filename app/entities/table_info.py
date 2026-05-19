@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 @dataclass
 class TableInfo:
@@ -6,4 +7,7 @@ class TableInfo:
     name: str
     role: str
     description: str
+    alias: list[Any] = field(default_factory=list)
+    datasource_id: str | None = None
+    is_active: bool = True
 

@@ -1,7 +1,9 @@
 import uuid
+import json
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_meta_session, get_datasource_repository, get_meta_draft_repository, get_meta_knowledge_service
@@ -255,10 +257,8 @@ async def publish_metadata(
 
         meta_config = MetaConfig(tables=tables, metrics=metrics)
 
-        # 使用动态创建的 dw 连接来替换默认的 dw_mysql_repository
-        # 这里简化处理，实际应该根据 datasource 创建动态连接
-        # TODO: 支持动态数据源连接
-        await meta_service.build_from_config(meta_config)
+        datasource_prefix = f"{ds.type}_{ds.database}_"
+        await meta_service.build_from_config(meta_config, datasource_prefix, datasource_id)
 
         draft.status = "published"
         draft.updated_at = datetime.now()
@@ -274,13 +274,8 @@ async def publish_metadata(
 @metadata_router.post("/datasources/{datasource_id}/sync")
 async def sync_metadata(
     datasource_id: str,
-    ds_repo: DatasourceRepository = Depends(get_datasource_repository),
-    draft_repo: MetaDraftRepository = Depends(get_meta_draft_repository)
+    ds_repo: DatasourceRepository = Depends(get_datasource_repository)
 ):
-    from fastapi.responses import StreamingResponse
-    import json
-    import asyncio
-
     ds = await ds_repo.get_by_id(datasource_id)
     if not ds:
         raise HTTPException(status_code=404, detail="数据源不存在")
@@ -288,6 +283,17 @@ async def sync_metadata(
     async def event_stream():
         from app.metadata_agent.graph import meta_agent
         from app.metadata_agent.state import MetaAgentState
+        from app.metadata_agent.context import MetaAgentContext
+        from app.agent.llm import llm
+        from app.clients.mysql_client_manager import meta_mysql_client_manager, dw_mysql_client_manager
+        from app.clients.qdrant_client_manager import qdrant_client_manager
+        from app.clients.es_client_manager import es_client_manager
+        from app.clients.embedding_client_manager import embedding_client_manager
+        from app.repositories.mysql.meta.datasource_repository import DatasourceRepository
+        from app.repositories.mysql.meta.meta_mysql_repository import MetaMysqlRepository
+        from app.repositories.qdrant.column_qdrant_repository import ColumnQdrantRepository
+        from app.repositories.qdrant.metric_qdrant_repository import MetricQdrantRepository
+        from app.repositories.es.value_es_respository import ValueEsRepository
 
         initial_state: MetaAgentState = {
             "datasource_id": datasource_id,
@@ -303,81 +309,94 @@ async def sync_metadata(
             "retry_count": 0
         }
 
-        try:
-            async for event in meta_agent.astream(initial_state):
-                node_name = list(event.keys())[0] if event else "unknown"
-                node_state = event.get(node_name, {})
+        async with meta_mysql_client_manager.session_factory() as session:
+            context: MetaAgentContext = {
+                "llm": llm,
+                "datasource_repository": DatasourceRepository(session),
+                "meta_mysql_repository": MetaMysqlRepository(session),
+                "column_qdrant_repository": ColumnQdrantRepository(qdrant_client_manager.client),
+                "metric_qdrant_repository": MetricQdrantRepository(qdrant_client_manager.client),
+                "value_es_repository": ValueEsRepository(es_client_manager.client)
+            }
 
-                if "error" in node_state and node_state["error"]:
-                    yield f"data: {json.dumps({'type': 'error', 'step': node_name, 'message': node_state['error']})}\n\n"
-                    return
+            try:
+                final_state = None
+                
+                async for event in meta_agent.astream(initial_state, context=context):
+                    for node_name, node_output in event.items():
+                        if node_output.get("error"):
+                            yield f"data: {json.dumps({'type': 'error', 'step': node_name, 'message': node_output['error']})}\n\n"
+                            return
+                        
+                        if node_name == "analyze_schema":
+                            tables_count = len(node_output.get("raw_schema", []))
+                            yield f"data: {json.dumps({'type': 'progress', 'step': node_name, 'status': 'success', 'message': f'获取到 {tables_count} 张表'})}\n\n"
+                        elif node_name == "classify_tables":
+                            classifications = node_output.get("table_classifications", {})
+                            dim_count = sum(1 for v in classifications.values() if v == "dim")
+                            fact_count = sum(1 for v in classifications.values() if v == "fact")
+                            yield f"data: {json.dumps({'type': 'progress', 'step': node_name, 'status': 'success', 'message': f'识别到 {dim_count} 张维度表，{fact_count} 张事实表'})}\n\n"
+                        elif node_name == "infer_tables":
+                            tables_count = len(node_output.get("table_configs", []))
+                            yield f"data: {json.dumps({'type': 'progress', 'step': node_name, 'status': 'success', 'message': f'生成 {tables_count} 张表的描述'})}\n\n"
+                        elif node_name == "infer_columns":
+                            cols_count = len(node_output.get("column_configs", []))
+                            yield f"data: {json.dumps({'type': 'progress', 'step': node_name, 'status': 'success', 'message': f'字段推断完成，共 {cols_count} 个字段'})}\n\n"
+                        elif node_name == "infer_metrics":
+                            metrics_count = len(node_output.get("metric_configs", []))
+                            yield f"data: {json.dumps({'type': 'progress', 'step': node_name, 'status': 'success', 'message': f'指标推断完成，共 {metrics_count} 个指标'})}\n\n"
+                        elif node_name == "assemble_config":
+                            yield f"data: {json.dumps({'type': 'progress', 'step': node_name, 'status': 'success', 'message': '配置组装完成'})}\n\n"
+                        elif node_name == "validate_config":
+                            valid = node_output.get("validation_result", {}).get("valid", False)
+                            if valid:
+                                yield f"data: {json.dumps({'type': 'progress', 'step': node_name, 'status': 'success', 'message': '配置校验通过'})}\n\n"
+                            else:
+                                errors = node_output.get("validation_result", {}).get("errors", [])
+                                yield f"data: {json.dumps({'type': 'progress', 'step': node_name, 'status': 'warning', 'message': f'配置校验发现问题: {errors[:2]}...'})}\n\n"
+                        elif node_name == "build_knowledge":
+                            sync_result = node_output.get("sync_result", {})
+                            if sync_result:
+                                tables_count = sync_result.get("tables", 0)
+                                columns_count = sync_result.get("columns", 0)
+                                metrics_count = sync_result.get("metrics", 0)
+                                yield f"data: {json.dumps({'type': 'progress', 'step': node_name, 'status': 'success', 'message': f'知识库构建完成: {tables_count} 表, {columns_count} 字段, {metrics_count} 指标'})}\n\n"
+                        
+                        final_state = node_output
 
-                if node_name == "analyze_schema":
-                    tables_count = len(node_state.get("raw_schema", []))
-                    yield f"data: {json.dumps({'type': 'progress', 'step': node_name, 'message': f'获取到 {tables_count} 张表'})}\n\n"
-                elif node_name == "classify_tables":
-                    classifications = node_state.get("table_classifications", {})
-                    dim_count = sum(1 for v in classifications.values() if v == "dim")
-                    fact_count = sum(1 for v in classifications.values() if v == "fact")
-                    yield f"data: {json.dumps({'type': 'progress', 'step': node_name, 'message': f'识别到 {dim_count} 张维度表，{fact_count} 张事实表'})}\n\n"
-                elif node_name == "infer_tables":
-                    yield f"data: {json.dumps({'type': 'progress', 'step': node_name, 'message': '表描述生成完成'})}\n\n"
-                elif node_name == "infer_columns":
-                    cols_count = len(node_state.get("column_configs", []))
-                    yield f"data: {json.dumps({'type': 'progress', 'step': node_name, 'message': f'字段推断完成，共 {cols_count} 个字段'})}\n\n"
-                elif node_name == "infer_metrics":
-                    metrics_count = len(node_state.get("metric_configs", []))
-                    yield f"data: {json.dumps({'type': 'progress', 'step': node_name, 'message': f'指标推断完成，共 {metrics_count} 个指标'})}\n\n"
-                elif node_name == "assemble_config":
-                    yield f"data: {json.dumps({'type': 'progress', 'step': node_name, 'message': '配置组装完成'})}\n\n"
-                elif node_name == "validate_config":
-                    valid = node_state.get("validation_result", {}).get("valid", False)
-                    if valid:
-                        yield f"data: {json.dumps({'type': 'progress', 'step': node_name, 'message': '配置校验通过'})}\n\n"
-                    else:
-                        yield f"data: {json.dumps({'type': 'progress', 'step': node_name, 'message': '配置校验失败，正在重试...'})}\n\n"
-                elif node_name == "build_knowledge":
-                    sync_result = node_state.get("sync_result", {})
-                    yield f"data: {json.dumps({'type': 'progress', 'step': node_name, 'message': '知识库构建完成'})}\n\n"
+                if final_state and final_state.get("meta_config"):
+                    meta_config = final_state["meta_config"]
+                    
+                    from dataclasses import asdict
+                    config_dict = asdict(meta_config)
+                    
+                    async with meta_mysql_client_manager.session_factory() as draft_session:
+                        from app.repositories.mysql.meta.meta_draft_repository import MetaDraftRepository
+                        draft_repo = MetaDraftRepository(draft_session)
+                        
+                        existing = await draft_repo.get_by_datasource_id(datasource_id)
+                        if existing:
+                            existing.config_json = config_dict
+                            existing.updated_at = datetime.now()
+                            await draft_repo.update(existing)
+                        else:
+                            draft = MetaDraft(
+                                id=str(uuid.uuid4()),
+                                datasource_id=datasource_id,
+                                config_json=config_dict,
+                                status="draft",
+                                created_at=datetime.now(),
+                                updated_at=datetime.now()
+                            )
+                            await draft_repo.create(draft)
+                        
+                        await draft_session.commit()
 
-            # 最终返回 meta_config
-            final_state = None
-            async for event in meta_agent.astream(initial_state):
-                final_state = event
-
-            # 获取最终状态
-            result_state = None
-            async for event in meta_agent.astream(initial_state):
-                result_state = event
-
-            # 简化：直接执行一次获取结果
-            from app.metadata_agent.graph import meta_agent
-            final_result = await meta_agent.ainvoke(initial_state)
-            meta_config = final_result.get("meta_config")
-
-            if meta_config:
-                # 保存为草稿
-                existing = await draft_repo.get_by_datasource_id(datasource_id)
-                if existing:
-                    existing.config_json = meta_config
-                    existing.updated_at = datetime.now()
-                    await draft_repo.update(existing)
+                    yield f"data: {json.dumps({'type': 'result', 'data': {'meta_config': config_dict}})}\n\n"
                 else:
-                    draft = MetaDraft(
-                        id=str(uuid.uuid4()),
-                        datasource_id=datasource_id,
-                        config_json=meta_config,
-                        status="draft",
-                        created_at=datetime.now(),
-                        updated_at=datetime.now()
-                    )
-                    await draft_repo.create(draft)
+                    yield f"data: {json.dumps({'type': 'error', 'message': '未能生成配置'})}\n\n"
 
-                yield f"data: {json.dumps({'type': 'result', 'data': {'meta_config': meta_config}})}\n\n"
-            else:
-                yield f"data: {json.dumps({'type': 'error', 'message': '未能生成配置'})}\n\n"
-
-        except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

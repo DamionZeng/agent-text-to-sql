@@ -11,4 +11,5 @@ class ColumnInfo:
     description: str
     alias: list[str]
     table_id: str
+    is_sync: bool = False
 

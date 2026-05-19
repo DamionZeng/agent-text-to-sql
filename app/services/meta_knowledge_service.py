@@ -33,38 +33,45 @@ class MetaKnowledgeService:
         self.value_es_repository: ValueEsRepository = value_es_repository
         self.metric_qdrant_repository: MetricQdrantRepository = metric_qdrant_repository
 
-    async def _save_tables_to_meta_db(self, meta_config: MetaConfig) -> list[ColumnInfo]:
+    async def _save_tables_to_meta_db(self, meta_config: MetaConfig, datasource_prefix: str = "", datasource_id: str = "") -> list[ColumnInfo]:
         table_infos: list[TableInfo] = []
         column_infos: list[ColumnInfo] = []
         for table in meta_config.tables:
+            table_id = f"{datasource_prefix}{table.name}"
             table_info = TableInfo(
-                id=table.name,
+                id=table_id,
                 name=table.name,
                 role=table.role,
-                description=table.description
+                description=table.description,
+                alias=getattr(table, 'alias', []),
+                datasource_id=datasource_id,
             )
             table_infos.append(table_info)
-            # 查询字段类型
             column_types = await self.dw_mysql_repository.get_column_type(table.name)
 
             for column in table.columns:
-                # 查询字段示例
                 column_values = await self.dw_mysql_repository.get_column_value(table.name, column.name)
 
                 column_info = ColumnInfo(
-                    id=f"{table.name}.{column.name}",
+                    id=f"{table_id}.{column.name}",
                     name=column.name,
                     type=column_types[column.name],
                     role=column.role,
                     examples=column_values,
                     description=column.description,
                     alias=column.alias,
-                    table_id=table.name
+                    table_id=table_id,
+                    is_sync=column.sync
                 )
                 column_infos.append(column_info)
-        async with self.meta_mysql_repository.session.begin():
-            self.meta_mysql_repository.save_table_infos(table_infos)
-            self.meta_mysql_repository.save_column_infos(column_infos)
+        
+        table_ids = [t.id for t in table_infos]
+        if table_ids:
+            await self.meta_mysql_repository.delete_table_infos(table_ids)
+            await self.meta_mysql_repository.delete_column_infos_by_table_ids(table_ids)
+        
+        self.meta_mysql_repository.save_table_infos(table_infos)
+        self.meta_mysql_repository.save_column_infos(column_infos)
         return column_infos
 
     async def _save_columns_to_qdrant(self, column_infos: list[ColumnInfo]):
@@ -97,29 +104,31 @@ class MetaKnowledgeService:
 
         await self.column_qdrant_repository.upsert(ids, embeddings, payloads)
 
-    async def _save_values_to_es(self, meta_config: MetaConfig):
+    async def _save_values_to_es(self, meta_config: MetaConfig, datasource_prefix: str = ""):
         await self.value_es_repository.ensure_index()
         value_infos: list[ValueInfo] = []
         for table in meta_config.tables:
+            table_id = f"{datasource_prefix}{table.name}"
             for column in table.columns:
                 if column.sync:
                     current_column_values = await self.dw_mysql_repository.get_column_value(table.name, column.name,
                                                                                             100000)
                     current_value_infos = [ValueInfo(
-                        id=f"{table.name}.{column.name}.{current_column_value}",
+                        id=f"{table_id}.{column.name}.{current_column_value}",
                         value=current_column_value,
-                        column_id=f"{table.name}.{column.name}"
+                        column_id=f"{table_id}.{column.name}"
                     ) for current_column_value in current_column_values]
                     value_infos.extend(current_value_infos)
         await self.value_es_repository.index(value_infos)
 
-    async def _save_metrics_to_meta_db(self, meta_config: MetaConfig)-> list[MetricInfo]:
+    async def _save_metrics_to_meta_db(self, meta_config: MetaConfig, datasource_prefix: str = "")-> list[MetricInfo]:
         metric_infos: list[MetricInfo] = []
         column_metrics: list[ColumnMetric] = []
 
         for metric in meta_config.metrics:
+            metric_id = f"{datasource_prefix}{metric.name}"
             metric_info = MetricInfo(
-                id=metric.name,
+                id=metric_id,
                 name=metric.name,
                 description=metric.description,
                 relevant_columns=metric.relevant_columns,
@@ -128,13 +137,18 @@ class MetaKnowledgeService:
             metric_infos.append(metric_info)
             for column in metric.relevant_columns:
                 column_metric = ColumnMetric(
-                    metric_id=metric.name,
-                    column_id=column
+                    metric_id=metric_id,
+                    column_id=f"{datasource_prefix}{column}"
                 )
                 column_metrics.append(column_metric)
-        async with self.meta_mysql_repository.session.begin():
-            self.meta_mysql_repository.save_metric_infos(metric_infos)
-            self.meta_mysql_repository.save_column_metrics(column_metrics)
+        
+        metric_ids = [m.id for m in metric_infos]
+        if metric_ids:
+            await self.meta_mysql_repository.delete_metric_infos(metric_ids)
+            await self.meta_mysql_repository.delete_column_metrics_by_metric_ids(metric_ids)
+        
+        self.meta_mysql_repository.save_metric_infos(metric_infos)
+        self.meta_mysql_repository.save_column_metrics(column_metrics)
         return metric_infos
 
     async def _save_metrics_to_qdrant(self, metric_infos: list[MetricInfo]):
@@ -197,18 +211,24 @@ class MetaKnowledgeService:
             await self._save_metrics_to_qdrant(metric_infos)
             logger.info("指标信息向量化成功")
 
-    async def build_from_config(self, meta_config: MetaConfig):
-        """直接从 MetaConfig 对象构建知识库（无需配置文件）"""
+    async def build_from_config(self, meta_config: MetaConfig, datasource_prefix: str = "", datasource_id: str = ""):
+        """直接从 MetaConfig 对象构建知识库（无需配置文件）
+        
+        Args:
+            meta_config: 元数据配置
+            datasource_prefix: 数据源前缀，格式为 "{type}_{name}_"，用于生成唯一ID
+            datasource_id: 数据源ID
+        """
         logger.info("开始从配置对象构建知识库")
         if meta_config.tables:
-            column_infos = await self._save_tables_to_meta_db(meta_config)
+            column_infos = await self._save_tables_to_meta_db(meta_config, datasource_prefix, datasource_id)
             logger.info("保存表信息和字段信息到数据库成功")
             await self._save_columns_to_qdrant(column_infos)
             logger.info("字段信息向量索引success")
-            await self._save_values_to_es(meta_config)
+            await self._save_values_to_es(meta_config, datasource_prefix)
             logger.info("全文索引success")
         if meta_config.metrics:
-            metric_infos = await self._save_metrics_to_meta_db(meta_config)
+            metric_infos = await self._save_metrics_to_meta_db(meta_config, datasource_prefix)
             logger.info("指标信息入库成功")
             await self._save_metrics_to_qdrant(metric_infos)
             logger.info("指标信息向量化成功")

@@ -294,27 +294,42 @@ const startSync = async () => {
   syncStatus.value = { type: 'info', message: 'AI 同步任务启动中...' }
 
   try {
-    const eventSource = new EventSource(`/api/metadata/datasources/${datasourceId}/sync`)
-    eventSource.onmessage = (event) => {
-      const data = JSON.parse(event.data)
-      if (data.type === 'progress') {
-        syncStatus.value = { type: 'info', message: `${data.step}: ${data.message}` }
-      } else if (data.type === 'result') {
-        syncStatus.value = { type: 'success', message: '同步完成' }
-        metaConfig.value = data.data.meta_config
-        initAliasStr()
-        eventSource.close()
-        syncing.value = false
-      } else if (data.type === 'error') {
-        syncStatus.value = { type: 'error', message: data.message }
-        eventSource.close()
-        syncing.value = false
-      }
+    const response = await fetch(`/api/metadata/datasources/${datasourceId}/sync`, {
+      method: 'POST'
+    })
+    
+    if (!response.ok) {
+      throw new Error('同步请求失败')
     }
-    eventSource.onerror = () => {
-      syncStatus.value = { type: 'error', message: '同步连接异常' }
-      eventSource.close()
-      syncing.value = false
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = JSON.parse(line.slice(6))
+          if (data.type === 'progress') {
+            syncStatus.value = { type: 'info', message: `${data.step}: ${data.message}` }
+          } else if (data.type === 'result') {
+            syncStatus.value = { type: 'success', message: '同步完成' }
+            metaConfig.value = data.data.meta_config
+            initAliasStr()
+            syncing.value = false
+          } else if (data.type === 'error') {
+            syncStatus.value = { type: 'error', message: data.message }
+            syncing.value = false
+          }
+        }
+      }
     }
   } catch (e) {
     message.error('启动同步失败')

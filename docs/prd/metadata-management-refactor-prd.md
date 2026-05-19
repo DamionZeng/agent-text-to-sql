@@ -494,16 +494,296 @@ app/
 
 ## 6. Prompt 设计
 
-新增以下 Prompt 文件（放置于 `prompts/` 目录）：
+### 6.1 设计原则
 
-| Prompt 文件 | 用途 | 调用节点 |
-|------------|------|---------|
-| `classify_tables.prompt` | 识别维度表/事实表 | `classify_tables` |
-| `infer_tables.prompt` | 生成表描述和角色 | `infer_tables` |
-| `infer_columns.prompt` | 生成字段描述、别名、角色 | `infer_columns` |
-| `infer_metrics.prompt` | 推断业务指标 | `infer_metrics` |
+- **结构化输出**：所有 Prompt 要求 LLM 返回 JSON 格式，便于程序解析
+- **上下文充分**：提供表名、字段名、字段类型、示例值等完整上下文
+- **角色明确**：通过 System Prompt 明确 LLM 的角色为"数据仓库元数据专家"
+- **可迭代**：Prompt 预留 few-shot 示例位置，便于后续优化
+
+### 6.2 Prompt 文件清单
+
+| Prompt 文件 | 用途 | 调用节点 | 输出格式 |
+|------------|------|---------|---------|
+| `classify_tables.prompt` | 识别维度表/事实表 | `classify_tables` | JSON dict |
+| `infer_tables.prompt` | 生成表描述和角色 | `infer_tables` | JSON list |
+| `infer_columns.prompt` | 生成字段描述、别名、角色 | `infer_columns` | JSON list |
+| `infer_metrics.prompt` | 推断业务指标 | `infer_metrics` | JSON list |
 
 Prompt 统一使用 `app/prompt/prompt_loader.py` 加载。
+
+### 6.3 classify_tables.prompt
+
+**目标**：根据表结构特征，将每个表分类为维度表（dim）、事实表（fact）或未知（unknown）。
+
+**输入变量**：
+- `tables`：表结构列表，每项包含表名和字段列表
+
+**Prompt 模板**：
+
+```
+你是一位资深数据仓库架构师，擅长维度建模。请根据以下数据库表结构，判断每个表是维度表（dim）、事实表（fact）还是无法判断（unknown）。
+
+判断标准：
+- 维度表（dim）：描述业务实体，包含大量文本型属性字段，通常有唯一标识（主键），不含可累加的数值度量。例如：用户表、商品表、地区表。
+- 事实表（fact）：记录业务过程，包含外键关联维度表，以及可累加的数值型度量字段（如金额、数量、次数）。例如：订单表、交易流水表。
+- unknown：无法明确判断，或表结构过于简单（如只有id和name的映射表）。
+
+请分析以下表结构：
+
+{% for table in tables %}
+表名：{{ table.name }}
+字段：
+{% for col in table.columns %}
+  - {{ col.name }} ({{ col.type }}){% if col.is_primary %} [PK]{% endif %}{% if col.is_foreign %} [FK]{% endif %}
+{% endfor %}
+
+{% endfor %}
+
+请返回 JSON 格式，不要包含任何其他说明文字：
+{
+  "table_name_1": "dim|fact|unknown",
+  "table_name_2": "dim|fact|unknown",
+  ...
+}
+```
+
+**输出示例**：
+```json
+{
+  "dim_region": "dim",
+  "dim_product": "dim",
+  "fact_order": "fact",
+  "fact_transaction": "fact"
+}
+```
+
+### 6.4 infer_tables.prompt
+
+**目标**：为每个表生成中文描述，并确认/修正表角色。
+
+**输入变量**：
+- `tables`：表结构列表
+- `classifications`：上一步的分类结果
+
+**Prompt 模板**：
+
+```
+你是一位数据仓库元数据专家。请为以下数据库表生成准确的中文业务描述，并确认表的角色。
+
+要求：
+1. description：用一句话描述该表存储什么业务数据（20-100字）
+2. role：确认表角色，可选值 dim（维度表）/ fact（事实表）
+3. 如果分类明显错误，可以修正角色，但需要在备注中说明原因
+
+表信息：
+
+{% for table in tables %}
+表名：{{ table.name }}
+当前分类：{{ classifications[table.name] }}
+字段列表：
+{% for col in table.columns %}
+  - {{ col.name }} ({{ col.type }})
+{% endfor %}
+
+{% endfor %}
+
+请返回 JSON 数组格式，不要包含任何其他说明文字：
+[
+  {
+    "name": "表名",
+    "role": "dim|fact",
+    "description": "中文描述"
+  }
+]
+```
+
+**输出示例**：
+```json
+[
+  {
+    "name": "dim_region",
+    "role": "dim",
+    "description": "地区维度表，存储省市区等地理层级信息"
+  },
+  {
+    "name": "fact_order",
+    "role": "fact",
+    "description": "订单事实表，记录每笔订单的成交金额、数量、时间等度量数据"
+  }
+]
+```
+
+### 6.5 infer_columns.prompt
+
+**目标**：为每个字段生成描述、别名、角色，并判断是否需要同步取值到 ES。
+
+**输入变量**：
+- `table`：当前表信息（表名、角色、描述）
+- `columns`：字段列表（含名称、类型、示例值）
+
+**Prompt 模板**：
+
+```
+你是一位数据仓库元数据专家。请为以下表的每个字段生成元数据信息。
+
+表名：{{ table.name }}
+表角色：{{ table.role }}
+表描述：{{ table.description }}
+
+字段信息：
+
+{% for col in columns %}
+字段名：{{ col.name }}
+数据类型：{{ col.type }}
+示例值：{{ col.sample_values | join(', ') }}
+
+{% endfor %}
+
+请为每个字段生成以下信息：
+1. role：字段角色，可选值
+   - primary_key：主键（唯一标识一条记录）
+   - foreign_key：外键（关联其他表的主键）
+   - measure：度量字段（可累加的数值，如金额、数量）
+   - dimension：维度字段（用于分组筛选，如状态、类型、名称）
+2. description：中文业务描述（10-50字）
+3. alias：中文别名列表（2-5个同义词，用于自然语言匹配）
+4. sync：是否同步该字段的取值到全文搜索引擎（true/false）
+   - 建议同步：状态、类型、名称、标签等枚举值或文本值
+   - 不建议同步：ID、金额、时间戳、数值度量
+
+请返回 JSON 数组格式，不要包含任何其他说明文字：
+[
+  {
+    "name": "字段名",
+    "role": "primary_key|foreign_key|measure|dimension",
+    "description": "中文描述",
+    "alias": ["别名1", "别名2"],
+    "sync": true|false
+  }
+]
+```
+
+**输出示例**：
+```json
+[
+  {
+    "name": "order_id",
+    "role": "primary_key",
+    "description": "订单唯一标识",
+    "alias": ["订单号", "订单ID"],
+    "sync": false
+  },
+  {
+    "name": "order_amount",
+    "role": "measure",
+    "description": "订单成交金额",
+    "alias": ["订单金额", "成交金额", "实付金额"],
+    "sync": false
+  },
+  {
+    "name": "order_status",
+    "role": "dimension",
+    "description": "订单当前状态",
+    "alias": ["订单状态", "状态"],
+    "sync": true
+  }
+]
+```
+
+### 6.6 infer_metrics.prompt
+
+**目标**：基于事实表和度量字段，推断常见的业务指标。
+
+**输入变量**：
+- `tables`：所有表配置（含表角色、描述）
+- `columns`：所有字段配置（含字段角色）
+
+**Prompt 模板**：
+
+```
+你是一位数据分析师，擅长从数据仓库模型中识别业务指标。请根据以下表结构，推断常见的业务指标（KPI）。
+
+要求：
+1. 指标必须基于事实表（fact）的 measure 字段推导
+2. 指标可以是：
+   - 基础指标：直接使用单个 measure 字段（如订单金额 → 成交金额）
+   - 复合指标：通过 measure 字段计算得到（如 成交金额 / 订单数 → 客单价）
+3. 每个指标需要明确关联的字段（格式：表名.字段名）
+4. 只推断常见、通用的业务指标，不要生造不常见的指标
+
+表和字段信息：
+
+{% for table in tables %}
+{% if table.role == 'fact' %}
+事实表：{{ table.name }} - {{ table.description }}
+度量字段：
+{% for col in columns %}
+{% if col.table_name == table.name and col.role == 'measure' %}
+  - {{ col.name }} ({{ col.type }}) - {{ col.description }}
+{% endif %}
+{% endfor %}
+维度字段：
+{% for col in columns %}
+{% if col.table_name == table.name and col.role == 'dimension' %}
+  - {{ col.name }} - {{ col.description }}
+{% endif %}
+{% endfor %}
+
+{% endif %}
+{% endfor %}
+
+请返回 JSON 数组格式，不要包含任何其他说明文字：
+[
+  {
+    "name": "指标名称（中文）",
+    "description": "指标业务含义（20-80字）",
+    "relevant_columns": ["表名.字段名"],
+    "alias": ["别名1", "别名2"]
+  }
+]
+```
+
+**输出示例**：
+```json
+[
+  {
+    "name": "GMV",
+    "description": "成交总额，统计时间范围内所有订单的成交金额总和",
+    "relevant_columns": ["fact_order.order_amount"],
+    "alias": ["成交总额", "订单总额", "交易额"]
+  },
+  {
+    "name": "订单量",
+    "description": "统计时间范围内的订单总笔数",
+    "relevant_columns": ["fact_order.order_id"],
+    "alias": ["订单数", "下单量", "笔数"]
+  },
+  {
+    "name": "客单价",
+    "description": "平均每笔订单的成交金额",
+    "relevant_columns": ["fact_order.order_amount", "fact_order.order_id"],
+    "alias": ["人均消费", "平均客单价"]
+  }
+]
+```
+
+### 6.7 Prompt 加载与调用方式
+
+```python
+from app.prompt.prompt_loader import PromptLoader
+
+# 加载 prompt
+prompt_loader = PromptLoader()
+classify_prompt = prompt_loader.load("classify_tables.prompt")
+
+# 渲染变量
+rendered = classify_prompt.render(tables=raw_schema)
+
+# 调用 LLM
+response = await llm.ainvoke(rendered)
+result = json.loads(response.content)
+```
 
 ---
 
@@ -582,12 +862,143 @@ MetaKnowledgeService.build_from_config(meta_config)
 - [ ] 前端数据源列表和表单页面
 
 ### Phase 3：MetaAgent 开发（第 2-3 周）
-- [ ] 搭建 `app/metadata_agent/` 框架（state, context, graph）
-- [ ] 实现 `analyze_schema` 节点（非 AI）
-- [ ] 实现 `classify_tables`、`infer_tables`、`infer_columns`、`infer_metrics` 节点（AI）
-- [ ] 实现 `validate_config`、`assemble_config`、`build_knowledge` 节点
-- [ ] 编写 Prompt 文件
-- [ ] Graph 编排和流式输出
+
+#### Phase 3.1 框架搭建（第 2 周第 1-2 天）
+
+**任务清单**：
+- [ ] 创建 `app/metadata_agent/` 目录结构
+- [ ] 实现 `state.py`：定义 `MetaAgentState` TypedDict
+- [ ] 实现 `context.py`：定义 `MetaAgentContext` TypedDict
+- [ ] 实现 `graph.py`：StateGraph 编排框架（先空节点占位）
+- [ ] 实现 `llm.py`：复用现有 LLM 实例的适配器
+- [ ] 创建 `nodes/__init__.py` 导出所有节点
+
+**技术要点**：
+- 参考 `app/agent/` 的目录结构和编码风格
+- `state.py` 中所有字段使用 `Annotated` + `Reducer` 处理列表追加逻辑
+- `context.py` 中注入的 Repository 需要通过依赖注入提供，避免循环导入
+
+**验收标准**：
+- 框架代码能通过 `python -c "from app.metadata_agent.graph import meta_agent"` 导入不报错
+- 空节点 graph 能正常编译
+
+#### Phase 3.2 非 AI 节点实现（第 2 周第 2-3 天）
+
+**任务清单**：
+- [ ] 实现 `analyze_schema` 节点
+  - 支持 MySQL / PostgreSQL / ClickHouse 的动态连接
+  - 查询 `INFORMATION_SCHEMA.COLUMNS` 获取字段信息
+  - 对每个字段采样示例值（`SELECT DISTINCT col FROM table LIMIT 10`）
+  - 输出 `RawTableSchema` 列表
+- [ ] 实现 `assemble_config` 节点
+  - 将 `table_configs` + `column_configs` + `metric_configs` 组装为 `MetaConfig`
+  - 处理字段归属关系（将 column 按 table_name 分组）
+- [ ] 实现 `validate_config` 节点
+  - 校验所有表有描述和角色
+  - 校验所有字段有描述和角色
+  - 校验事实表至少有一个 measure 字段
+  - 校验指标关联的字段存在
+  - 输出 `{"valid": bool, "errors": list[str]}`
+- [ ] 实现 `build_knowledge` 节点
+  - 调用 `MetaKnowledgeService.build_from_config()`
+  - 捕获异常并转换为 `sync_result`
+
+**技术要点**：
+- `analyze_schema` 使用 SQLAlchemy 创建动态引擎：`create_engine(connection_string)`
+- 连接字符串中的密码需要解密
+- 采样示例值时设置查询超时（5秒），避免大表全表扫描
+- `validate_config` 的错误信息需要中文友好，用于前端展示
+
+**验收标准**：
+- `analyze_schema` 能正确连接测试数据库并返回 Schema 结构
+- `validate_config` 能识别缺失描述的表/字段
+- `build_knowledge` 能复用现有服务完成同步
+
+#### Phase 3.3 AI 节点实现（第 2 周第 3-5 天）
+
+**任务清单**：
+- [ ] 实现 `classify_tables` 节点
+  - 调用 LLM，输入所有表的字段结构
+  - 解析 JSON 输出，写入 `table_classifications`
+  - 处理 LLM 返回格式异常（fallback 为 unknown）
+- [ ] 实现 `infer_tables` 节点
+  - 调用 LLM，输入表结构 + 分类结果
+  - 解析并输出 `TableConfig` 列表（不含 columns）
+- [ ] 实现 `infer_columns` 节点
+  - 按表分批调用 LLM（避免 prompt 过长）
+  - 输入：表信息 + 该表所有字段（含示例值）
+  - 输出：`ColumnConfig` 列表
+- [ ] 实现 `infer_metrics` 节点
+  - 调用 LLM，输入所有事实表 + measure 字段
+  - 输出：`MetricConfig` 列表
+
+**技术要点**：
+- 每个 AI 节点需要包裹 try-except，LLM 调用失败时写入 `state["error"]`
+- 使用 `runtime.stream_writer` 推送进度事件
+- LLM 输出使用 `json.loads()` 解析，失败时尝试正则提取 JSON
+- 考虑并发优化：`infer_columns` 可以按表并行调用 LLM（使用 `asyncio.gather`）
+- 设置 LLM 调用超时（30秒）
+
+**验收标准**：
+- 每个 AI 节点能独立运行并返回正确格式的数据
+- LLM 返回异常时有友好的错误处理，不导致 Agent 崩溃
+- 流式输出能实时展示每个节点的执行状态
+
+#### Phase 3.4 Prompt 文件编写（第 2 周第 5 天 - 第 3 周第 1 天）
+
+**任务清单**：
+- [ ] 编写 `classify_tables.prompt`
+- [ ] 编写 `infer_tables.prompt`
+- [ ] 编写 `infer_columns.prompt`
+- [ ] 编写 `infer_metrics.prompt`
+- [ ] 将 Prompt 文件放入 `prompts/` 目录
+- [ ] 验证 Prompt 加载和渲染正常
+
+**技术要点**：
+- Prompt 使用 Jinja2 模板语法
+- 预留 few-shot 示例位置（注释标记），便于后续优化
+- 每个 Prompt 包含明确的输出格式要求和示例
+
+**验收标准**：
+- Prompt 文件能被 `PromptLoader` 正确加载
+- 渲染后的 Prompt 包含完整的上下文信息
+- LLM 能按照要求的 JSON 格式返回结果（测试准确率 > 80%）
+
+#### Phase 3.5 Graph 编排与流式输出（第 3 周第 1-2 天）
+
+**任务清单**：
+- [ ] 完善 `graph.py`，连接所有节点和边
+- [ ] 实现条件边：`validate_config` → `build_knowledge`（成功）/ `infer_tables`（失败重试）
+- [ ] 实现重试机制：`retry_count` 超过 3 次则走向 END 并返回错误
+- [ ] 实现 `sync_router.py` 的 SSE 流式接口
+- [ ] 对接前端 SSE 连接
+
+**技术要点**：
+- 重试逻辑：校验失败时回到 `infer_tables`，保留已生成的部分数据
+- SSE 接口使用 `StreamingResponse`，`media_type="text/event-stream"`
+- 每个节点开始时推送 `{"type": "progress", "status": "running"}`
+- 节点完成推送 `{"type": "progress", "status": "success"}`
+- 最终结果推送 `{"type": "result", "data": {...}}`
+
+**验收标准**：
+- 完整 Graph 能从 START 运行到 END
+- 校验失败时能正确重试，最多 3 次
+- SSE 接口能在浏览器中接收完整的事件流
+- 前端能正确展示进度和最终结果
+
+#### Phase 3.6 单元测试（第 3 周第 2-3 天）
+
+**任务清单**：
+- [ ] 编写 `analyze_schema` 节点的单元测试（使用内存 SQLite 模拟数据源）
+- [ ] 编写 `validate_config` 节点的单元测试
+- [ ] 编写 `assemble_config` 节点的单元测试
+- [ ] 编写 Graph 整体流程的集成测试（Mock LLM 响应）
+- [ ] 测试重试逻辑和异常处理
+
+**验收标准**：
+- 非 AI 节点单元测试覆盖率 > 80%
+- Mock LLM 的集成测试能验证完整流程
+- 所有测试通过
 
 ### Phase 4：元数据编辑器（第 3-4 周）
 - [ ] 元数据草稿 API
@@ -600,9 +1011,9 @@ MetaKnowledgeService.build_from_config(meta_config)
 
 ---
 
-## 10. 附录
+## 11. 附录
 
-### 10.1 现有 meta_conf.yaml 格式参考
+### 11.1 现有 meta_conf.yaml 格式参考
 
 ```yaml
 tables:
@@ -629,7 +1040,7 @@ metrics:
     alias: [成交总额, 订单总额]
 ```
 
-### 10.2 MetaConfig 数据结构（现有）
+### 11.2 MetaConfig 数据结构（现有）
 
 ```python
 @dataclass
@@ -660,7 +1071,7 @@ class MetaConfig:
     metrics: list[MetricConfig]
 ```
 
-### 10.3 现有 Agent 节点参考
+### 11.3 现有 Agent 节点参考
 
 现有 `DataAgent` 节点模式：
 ```python
@@ -677,3 +1088,42 @@ async def node_name(state: DataAgentState, runtime: Runtime[DataAgentContext]):
 ```
 
 MetaAgent 节点遵循完全相同的模式。
+
+---
+
+## 10. 风险与对策
+
+### 10.1 技术风险
+
+| 风险 | 影响 | 可能性 | 对策 |
+|------|------|--------|------|
+| **LLM 输出格式不稳定** | AI 节点解析 JSON 失败，Agent 流程中断 | 中 | 1. Prompt 中明确要求 JSON 格式<br>2. 实现 JSON 修复逻辑（正则提取、去除 markdown 代码块）<br>3. 解析失败时 fallback 到默认值（如 unknown）<br>4. 记录原始输出便于人工排查 |
+| **LLM 调用超时或失败** | 同步任务卡住或失败 | 中 | 1. 设置 LLM 调用超时（30秒）<br>2. 实现重试机制（最多 3 次）<br>3. 超时后返回错误，前端展示友好提示<br>4. 支持用户手动重试 |
+| **数据库连接泄漏** | 服务端连接数耗尽，影响现有查询链路 | 低 | 1. 使用连接池，设置 max_overflow 和 pool_timeout<br>2. 确保每个连接在使用后显式 close<br>3. 使用 context manager 管理连接生命周期<br>4. 监控连接池使用率 |
+| **Prompt 注入攻击** | 恶意表名/字段名通过 Prompt 影响 LLM 输出 | 低 | 1. 对用户输入的表名、字段名进行校验（只允许字母数字下划线）<br>2. Prompt 模板中使用 Jinja2 的 autoescape<br>3. 不将用户自定义描述直接传入 LLM（经过人工确认后才进入 Agent 流程） |
+| **数据源密码泄露** | 数据库凭证被窃取 | 低 | 1. 使用 AES-256 加密存储密码<br>2. 密钥通过环境变量注入，不提交到代码仓库<br>3. API 不返回密码字段<br>4. 连接字符串中的密码在日志中脱敏 |
+
+### 10.2 业务风险
+
+| 风险 | 影响 | 可能性 | 对策 |
+|------|------|--------|------|
+| **AI 生成的元数据不准确** | 用户查询时语义匹配错误，影响查询准确率 | 高 | 1. AI 生成后必须人工确认才能发布<br>2. 提供可视化编辑器，方便用户修改<br>3. 保存草稿机制，支持多次迭代<br>4. 发布后保留历史版本，支持回滚 |
+| **同步过程破坏现有索引** | 发布新配置后，现有查询链路异常 | 中 | 1. 发布前进行配置校验<br>2. 支持灰度发布（先同步到测试环境验证）<br>3. 保留上一版本的配置快照<br>4. 提供一键回滚功能 |
+| **大表 Schema 分析性能差** | 表数量过多或字段过多时，Agent 执行缓慢 | 中 | 1. `analyze_schema` 限制最大分析表数（如 50 张）<br>2. 示例值采样使用 `LIMIT 10`，避免全表扫描<br>3. `infer_columns` 按表并行调用 LLM<br>4. 提供"选择需要分析的表"功能，减少不必要的分析 |
+| **多数据源类型兼容性** | 新数据源类型（如 Oracle、SQLServer）无法连接 | 低 | 1. 数据源连接使用 SQLAlchemy + 方言驱动，保证通用性<br>2. Schema 查询使用 ANSI SQL 标准的 `INFORMATION_SCHEMA`<br>3. 新增数据源类型只需添加驱动依赖和连接字符串模板<br>4. 提供数据源类型扩展接口 |
+
+### 10.3 项目风险
+
+| 风险 | 影响 | 可能性 | 对策 |
+|------|------|--------|------|
+| **Phase 3 延期影响整体进度** | Phase 4/5 被迫压缩，质量下降 | 中 | 1. Phase 3 的 AI 节点和非 AI 节点可以并行开发<br>2. Prompt 调优可以独立进行，不阻塞工程开发<br>3. 预留 2 天缓冲时间<br>4. 如时间不足，优先保证非 AI 节点和基础流程，AI 节点可后续迭代优化 |
+| **与现有系统耦合意外增加** | 修改影响现有 Agent 查询链路 | 低 | 1. 严格遵守隔离原则，新增模块不修改现有代码<br>2. 代码评审时重点检查是否修改了 `app/agent/` 目录<br>3. Phase 5 的集成测试必须包含现有链路回归测试<br>4. 使用 feature flag 控制新功能上线，便于快速回退 |
+
+### 10.4 风险监控清单
+
+- [ ] LLM 调用成功率监控（目标 > 95%）
+- [ ] LLM 平均响应时间监控（目标 < 10s）
+- [ ] JSON 解析失败率监控（目标 < 5%）
+- [ ] 数据库连接池使用率监控（目标 < 80%）
+- [ ] 同步任务成功率监控（目标 > 98%）
+- [ ] 现有 Agent 查询成功率监控（目标不下降）

@@ -1,12 +1,19 @@
 import json
 
+from langgraph.runtime import Runtime
+
 from app.agent.llm import llm
+from app.metadata_agent.context import MetaAgentContext
 from app.metadata_agent.state import MetaAgentState
 from app.prompt.prompt_loader import load_prompt
+from app.core.log import logger
 
 
-async def infer_tables(state: MetaAgentState) -> dict:
+async def infer_tables(state: MetaAgentState, runtime: Runtime[MetaAgentContext]) -> dict:
     """AI 为每个表生成描述和确认角色"""
+    writer = runtime.stream_writer
+    writer({"type": "progress", "step": "infer_tables", "status": "running", "message": "AI 正在生成表描述..."})
+
     raw_schema = state["raw_schema"]
     classifications = state["table_classifications"]
 
@@ -19,7 +26,7 @@ async def infer_tables(state: MetaAgentState) -> dict:
 
     messages = [
         ("system", prompt),
-        ("human", f"请为以下表生成中文描述并确认角色:\n\n{tables_text}\n\n请返回 JSON 数组格式: [{\"name\": \"表名\", \"role\": \"dim|fact\", \"description\": \"描述\"}]")
+        ("human", f"请为以下表生成中文描述并确认角色:\n\n{tables_text}\n\n请返回 JSON 数组格式: [{{\"name\": \"表名\", \"role\": \"dim|fact\", \"description\": \"描述\"}}]")
     ]
 
     try:
@@ -32,13 +39,17 @@ async def infer_tables(state: MetaAgentState) -> dict:
             content = content.split("```")[1].split("```")[0]
 
         table_configs = json.loads(content.strip())
-        return {"table_configs": table_configs, "error": None}
+        writer({"type": "progress", "step": "infer_tables", "status": "success", "message": f"生成 {len(table_configs)} 张表的描述"})
+        logger.info(f"infer_tables 完成: {len(table_configs)} 张表")
+        return {"table_configs": table_configs, "error": None, "retry_count": state.get("retry_count", 0) + 1}
     except Exception as e:
-        # 降级处理：使用默认描述
+        logger.error(f"infer_tables 失败: {str(e)}")
+        writer({"type": "progress", "step": "infer_tables", "status": "error", "message": str(e)})
         return {
             "table_configs": [
                 {"name": t["name"], "role": classifications.get(t["name"], "dim"), "description": f"{t['name']} 表"}
                 for t in raw_schema
             ],
-            "error": f"推断表信息失败: {str(e)}"
+            "error": f"推断表信息失败: {str(e)}",
+            "retry_count": state.get("retry_count", 0) + 1
         }

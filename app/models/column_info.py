@@ -1,4 +1,4 @@
-from sqlalchemy import String, Text
+from sqlalchemy import String, Text, Boolean
 from sqlalchemy.types import JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -39,4 +39,9 @@ class ColumnInfoMySQL(Base):
     table_id: Mapped[str | None] = mapped_column(
         String(64),
         comment="所属表编号"
+    )
+    is_sync: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        comment="是否同步到向量库"
     )
