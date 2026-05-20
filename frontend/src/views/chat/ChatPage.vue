@@ -147,12 +147,7 @@ const send = async () => {
   currentStepsMsg.value = {
     role: 'assistant',
     type: 'steps',
-    steps: [
-      { text: '分析问题', status: 'running' },
-      { text: '生成 SQL', status: 'pending' },
-      { text: '执行查询', status: 'pending' },
-      { text: '返回结果', status: 'pending' }
-    ]
+    steps: []
   }
   messages.value.push(currentStepsMsg.value)
   scrollToBottom()
@@ -171,48 +166,30 @@ const send = async () => {
     const reader = res.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
-    let result = null
 
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
 
       buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
+      const events = buffer.split('\n\n')
+      buffer = events.pop() || ''
 
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const dataStr = line.slice(6)
-          try {
-            const data = JSON.parse(dataStr)
-            handleSSEEvent(data)
-          } catch (e) {
-            // 忽略无效 JSON
-          }
+      for (const evt of events) {
+        const line = evt.trim()
+        if (!line.startsWith('data: ')) continue
+        try {
+          const data = JSON.parse(line.replace(/^data:\s*/, ''))
+          handleSSEEvent(data)
+        } catch (e) {
+          // 忽略无效 JSON
         }
       }
     }
 
-    // 移除步骤消息，添加最终结果
     const stepsIndex = messages.value.indexOf(currentStepsMsg.value)
     if (stepsIndex > -1) {
       messages.value.splice(stepsIndex, 1)
-    }
-
-    if (result && result.columns && result.rows) {
-      messages.value.push({
-        role: 'assistant',
-        type: 'table',
-        columns: result.columns,
-        rows: result.rows
-      })
-    } else {
-      messages.value.push({
-        role: 'assistant',
-        type: 'text',
-        content: '查询完成，但没有返回结果。'
-      })
     }
 
   } catch (e) {
@@ -236,25 +213,25 @@ const send = async () => {
 }
 
 const handleSSEEvent = (data) => {
-  if (data.type === 'step') {
+  if (data.type === 'progress') {
     if (currentStepsMsg.value) {
       const steps = currentStepsMsg.value.steps
-      // 更新步骤状态
-      if (data.step === 'extract_keywords') {
-        steps[0].status = 'done'
-        steps[1].status = 'running'
-      } else if (data.step === 'filter_tables' || data.step === 'filter_metrics') {
-        steps[1].status = 'done'
-        steps[2].status = 'running'
-      } else if (data.step === 'generate_sql') {
-        steps[2].status = 'done'
-        steps[3].status = 'running'
-      } else if (data.step === 'run_sql') {
-        steps[3].status = 'done'
+      let step = steps.find((s) => s.text === data.step)
+
+      if (!step) {
+        step = { text: data.step, status: data.status }
+        steps.push(step)
+      } else {
+        step.status = data.status
       }
     }
-  } else if (data.type === 'result') {
-    result = data.data
+  } else if (data.type === 'result' && Array.isArray(data.data)) {
+    messages.value.push({
+      role: 'assistant',
+      type: 'table',
+      columns: Object.keys(data.data[0] || {}),
+      rows: data.data
+    })
   }
 }
 
