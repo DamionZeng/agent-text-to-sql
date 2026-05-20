@@ -33,6 +33,10 @@ async def _init_meta_tables():
     from app.models.base import Base
     from app.models.datasource import DatasourceMySQL
     from app.models.meta_draft import MetaDraftMySQL
+    from app.models.table_info import TableInfoMySQL
+    from app.models.column_info import ColumnInfoMySQL
+    from app.models.metric_info import MetricInfoMySQL
+    from app.models.column_metric import ColumnMetricMySQL
 
     async with meta_mysql_client_manager.engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

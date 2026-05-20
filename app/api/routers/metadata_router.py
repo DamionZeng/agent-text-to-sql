@@ -281,7 +281,7 @@ async def sync_metadata(
         raise HTTPException(status_code=404, detail="数据源不存在")
 
     async def event_stream():
-        from app.metadata_agent.graph import meta_agent
+        from app.metadata_agent.graph import meta_agent_draft
         from app.metadata_agent.state import MetaAgentState
         from app.metadata_agent.context import MetaAgentContext
         from app.agent.llm import llm
@@ -320,13 +320,15 @@ async def sync_metadata(
             }
 
             try:
-                final_state = None
+                final_state = initial_state
                 
-                async for event in meta_agent.astream(initial_state, context=context):
+                async for event in meta_agent_draft.astream(initial_state, context=context):
                     for node_name, node_output in event.items():
                         if node_output.get("error"):
                             yield f"data: {json.dumps({'type': 'error', 'step': node_name, 'message': node_output['error']})}\n\n"
                             return
+                        
+                        final_state = {**final_state, **node_output}
                         
                         if node_name == "analyze_schema":
                             tables_count = len(node_output.get("raw_schema", []))
@@ -354,21 +356,9 @@ async def sync_metadata(
                             else:
                                 errors = node_output.get("validation_result", {}).get("errors", [])
                                 yield f"data: {json.dumps({'type': 'progress', 'step': node_name, 'status': 'warning', 'message': f'配置校验发现问题: {errors[:2]}...'})}\n\n"
-                        elif node_name == "build_knowledge":
-                            sync_result = node_output.get("sync_result", {})
-                            if sync_result:
-                                tables_count = sync_result.get("tables", 0)
-                                columns_count = sync_result.get("columns", 0)
-                                metrics_count = sync_result.get("metrics", 0)
-                                yield f"data: {json.dumps({'type': 'progress', 'step': node_name, 'status': 'success', 'message': f'知识库构建完成: {tables_count} 表, {columns_count} 字段, {metrics_count} 指标'})}\n\n"
-                        
-                        final_state = node_output
 
                 if final_state and final_state.get("meta_config"):
                     meta_config = final_state["meta_config"]
-                    
-                    from dataclasses import asdict
-                    config_dict = asdict(meta_config)
                     
                     async with meta_mysql_client_manager.session_factory() as draft_session:
                         from app.repositories.mysql.meta.meta_draft_repository import MetaDraftRepository
@@ -376,14 +366,14 @@ async def sync_metadata(
                         
                         existing = await draft_repo.get_by_datasource_id(datasource_id)
                         if existing:
-                            existing.config_json = config_dict
+                            existing.config_json = meta_config
                             existing.updated_at = datetime.now()
                             await draft_repo.update(existing)
                         else:
                             draft = MetaDraft(
                                 id=str(uuid.uuid4()),
                                 datasource_id=datasource_id,
-                                config_json=config_dict,
+                                config_json=meta_config,
                                 status="draft",
                                 created_at=datetime.now(),
                                 updated_at=datetime.now()
@@ -392,7 +382,7 @@ async def sync_metadata(
                         
                         await draft_session.commit()
 
-                    yield f"data: {json.dumps({'type': 'result', 'data': {'meta_config': config_dict}})}\n\n"
+                    yield f"data: {json.dumps({'type': 'result', 'data': {'meta_config': meta_config}})}\n\n"
                 else:
                     yield f"data: {json.dumps({'type': 'error', 'message': '未能生成配置'})}\n\n"
 
