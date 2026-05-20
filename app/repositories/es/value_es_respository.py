@@ -27,6 +27,18 @@ class ValueEsRepository:
                 mappings=self.index_mappings
             )
 
+    async def delete_by_column_ids(self, column_ids: list[str]):
+        if not column_ids:
+            return
+        await self.client.delete_by_query(
+            index=self.index_name,
+            query={
+                "terms": {
+                    "column_id": column_ids
+                }
+            }
+        )
+
     async def index(self, value_infos: list[ValueInfo], batch_size=20):
         for i in range(0, len(value_infos), batch_size):
             batch_value_infos = value_infos[i : i + batch_size]
@@ -36,6 +48,7 @@ class ValueEsRepository:
                     {
                         "index": {
                             "_index": self.index_name,
+                            "_id": value_info.id
                         }
                     }
                 )

@@ -77,6 +77,10 @@ class MetaKnowledgeService:
     async def _save_columns_to_qdrant(self, column_infos: list[ColumnInfo]):
         await self.column_qdrant_repository.ensure_collection()
 
+        table_ids = list({c.table_id for c in column_infos})
+        if table_ids:
+            await self.column_qdrant_repository.delete_by_table_ids(table_ids)
+
         points: list[dict] = []
         for column_info in column_infos:
             points.append({
@@ -84,14 +88,12 @@ class MetaKnowledgeService:
                 'embedding_text': column_info.name,
                 'payload': asdict(column_info)
             })
-            # 别名向量化
             for alia in column_info.alias:
                 points.append({
                     'id': uuid.uuid4(),
                     'embedding_text': alia,
                     'payload': asdict(column_info)
                 })
-        # 批量向量化
         embeddings: list[list[float]] = []
         embedding_texts = [point['embedding_text'] for point in points]
         embedding_size = 10
@@ -107,18 +109,23 @@ class MetaKnowledgeService:
     async def _save_values_to_es(self, meta_config: MetaConfig, datasource_prefix: str = ""):
         await self.value_es_repository.ensure_index()
         value_infos: list[ValueInfo] = []
+        column_ids: list[str] = []
         for table in meta_config.tables:
             table_id = f"{datasource_prefix}{table.name}"
             for column in table.columns:
+                column_id = f"{table_id}.{column.name}"
                 if column.sync:
+                    column_ids.append(column_id)
                     current_column_values = await self.dw_mysql_repository.get_column_value(table.name, column.name,
                                                                                             100000)
                     current_value_infos = [ValueInfo(
                         id=f"{table_id}.{column.name}.{current_column_value}",
                         value=current_column_value,
-                        column_id=f"{table_id}.{column.name}"
+                        column_id=column_id
                     ) for current_column_value in current_column_values]
                     value_infos.extend(current_value_infos)
+        if column_ids:
+            await self.value_es_repository.delete_by_column_ids(column_ids)
         await self.value_es_repository.index(value_infos)
 
     async def _save_metrics_to_meta_db(self, meta_config: MetaConfig, datasource_prefix: str = "")-> list[MetricInfo]:
@@ -155,6 +162,10 @@ class MetaKnowledgeService:
     async def _save_metrics_to_qdrant(self, metric_infos: list[MetricInfo]):
         await self.metric_qdrant_repository.ensure_collection()
 
+        metric_ids = [m.id for m in metric_infos]
+        if metric_ids:
+            await self.metric_qdrant_repository.delete_by_metric_ids(metric_ids)
+
         points: list[dict] = []
         for metric_info in metric_infos:
             points.append({
@@ -162,14 +173,12 @@ class MetaKnowledgeService:
                 'embedding_text': metric_info.name,
                 'payload': asdict(metric_info)
             })
-            # 别名向量化
             for alia in metric_info.alias:
                 points.append({
                     'id': uuid.uuid4(),
                     'embedding_text': alia,
                     'payload': asdict(metric_info)
                 })
-        # 批量向量化
         embeddings: list[list[float]] = []
         embedding_texts = [point['embedding_text'] for point in points]
         embedding_size = 10
