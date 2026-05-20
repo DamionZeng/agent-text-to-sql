@@ -26,29 +26,37 @@ class MetaMysqlRepository:
     def write(self):
         pass
 
-    def save_table_infos(self, table_infos: list[TableInfo]):
+    async def save_table_infos(self, table_infos: list[TableInfo]):
         self.session.add_all([TableInfoMapper.to_model(table_info) for table_info in table_infos])
+        await self.session.commit()
 
-    def save_column_infos(self, column_infos: list[ColumnInfo]):
+    async def save_column_infos(self, column_infos: list[ColumnInfo]):
         self.session.add_all([ColumnInfoMapper.to_model(column_info) for column_info in column_infos])
+        await self.session.commit()
 
-    def save_metric_infos(self, metric_infos: list[MetricInfo]):
+    async def save_metric_infos(self, metric_infos: list[MetricInfo]):
         self.session.add_all([MetricInfoMapper.to_model(metric_info) for metric_info in metric_infos])
+        await self.session.commit()
 
-    def save_column_metrics(self, column_metrics: list[ColumnMetric]):
+    async def save_column_metrics(self, column_metrics: list[ColumnMetric]):
         self.session.add_all([ColumnMetricMapper.to_model(column_metric) for column_metric in column_metrics])
+        await self.session.commit()
 
     async def delete_table_infos(self, table_ids: list[str]):
         await self.session.execute(delete(TableInfoMySQL).where(TableInfoMySQL.id.in_(table_ids)))
+        await self.session.commit()
 
     async def delete_column_infos_by_table_ids(self, table_ids: list[str]):
         await self.session.execute(delete(ColumnInfoMySQL).where(ColumnInfoMySQL.table_id.in_(table_ids)))
+        await self.session.commit()
 
     async def delete_metric_infos(self, metric_ids: list[str]):
         await self.session.execute(delete(MetricInfoMySQL).where(MetricInfoMySQL.id.in_(metric_ids)))
+        await self.session.commit()
 
     async def delete_column_metrics_by_metric_ids(self, metric_ids: list[str]):
         await self.session.execute(delete(ColumnMetricMySQL).where(ColumnMetricMySQL.metric_id.in_(metric_ids)))
+        await self.session.commit()
 
     async def get_column_info_by_id(self, id: str) -> ColumnInfo | None:
         column_info_mysql:ColumnInfoMySQL | None = await self.session.get(ColumnInfoMySQL, id)

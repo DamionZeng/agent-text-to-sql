@@ -26,7 +26,7 @@ class QueryService:
         self.meta_mysql_repository = meta_mysql_repository
         self.dw_mysql_repository = dw_mysql_repository
 
-    async def query(self, query: str):
+    async def query(self, query: str, datasource_id: str | None = None):
         context = DataAgentContext(
             embedding_client=self.embedding_client,
             column_qdrant_repository=self.column_qdrant_repository,

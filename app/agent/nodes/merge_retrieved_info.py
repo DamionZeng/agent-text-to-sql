@@ -18,11 +18,14 @@ async def merge_retrieved_info(state: DataAgentState, runtime: Runtime[DataAgent
         retrieved_value_infos: list[ValueInfo] = state['retrieved_value_infos']
         retrieved_metric_infos: list[MetricInfo] = state['retrieved_metric_infos']
 
+
         meta_mysql_repository: MetaMysqlRepository = runtime.context['meta_mysql_repository']
 
         # 处理表信息
         retrieved_column_infos_map: dict[str, ColumnInfo] = {retrieved_column_info.id:retrieved_column_info for
                                                              retrieved_column_info in retrieved_column_infos}
+        
+        print(retrieved_column_infos_map)
         # 指标相关字段加入字段信息中
         for retrieved_metric_info in retrieved_metric_infos:
             for relevant_column in retrieved_metric_info.relevant_columns:

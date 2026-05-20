@@ -70,8 +70,8 @@ class MetaKnowledgeService:
             await self.meta_mysql_repository.delete_table_infos(table_ids)
             await self.meta_mysql_repository.delete_column_infos_by_table_ids(table_ids)
         
-        self.meta_mysql_repository.save_table_infos(table_infos)
-        self.meta_mysql_repository.save_column_infos(column_infos)
+        await self.meta_mysql_repository.save_table_infos(table_infos)
+        await self.meta_mysql_repository.save_column_infos(column_infos)
         return column_infos
 
     async def _save_columns_to_qdrant(self, column_infos: list[ColumnInfo]):
@@ -127,11 +127,12 @@ class MetaKnowledgeService:
 
         for metric in meta_config.metrics:
             metric_id = f"{datasource_prefix}{metric.name}"
+            relevant_columns_with_prefix = [f"{datasource_prefix}{col}" for col in metric.relevant_columns]
             metric_info = MetricInfo(
                 id=metric_id,
                 name=metric.name,
                 description=metric.description,
-                relevant_columns=metric.relevant_columns,
+                relevant_columns=relevant_columns_with_prefix,
                 alias=metric.alias
             )
             metric_infos.append(metric_info)
@@ -147,8 +148,8 @@ class MetaKnowledgeService:
             await self.meta_mysql_repository.delete_metric_infos(metric_ids)
             await self.meta_mysql_repository.delete_column_metrics_by_metric_ids(metric_ids)
         
-        self.meta_mysql_repository.save_metric_infos(metric_infos)
-        self.meta_mysql_repository.save_column_metrics(column_metrics)
+        await self.meta_mysql_repository.save_metric_infos(metric_infos)
+        await self.meta_mysql_repository.save_column_metrics(column_metrics)
         return metric_infos
 
     async def _save_metrics_to_qdrant(self, metric_infos: list[MetricInfo]):
@@ -190,7 +191,7 @@ class MetaKnowledgeService:
         # 2. 根据配置文件同步指定的表信息和指标信息
         if meta_config.tables:
             # 2.1 表信息同步
-            column_infos = await self._save_tables_to_meta_db(meta_config)
+            column_infos = await self._save_tables_to_meta_db(meta_config, "", "")
             logger.info("保存表信息和字段信息到数据库成功")
 
             # 2.2 对字段信息建立向量索引
@@ -198,13 +199,13 @@ class MetaKnowledgeService:
             logger.info("字段信息向量索引success")
 
             # 2.3 对指定维度字段取值建立全文索引
-            await self._save_values_to_es(meta_config)
+            await self._save_values_to_es(meta_config, "")
             logger.info("全文索引success")
 
         # 3. 根据配置文件同步指定的指标信息
         if meta_config.metrics:
             # 3.1 将指标信息保存meta数据库中
-            metric_infos = await self._save_metrics_to_meta_db(meta_config)
+            metric_infos = await self._save_metrics_to_meta_db(meta_config, "")
             logger.info("指标信息入库成功")
 
             # 3.2 对指标信息建立向量索引

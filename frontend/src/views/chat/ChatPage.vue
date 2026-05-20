@@ -1,5 +1,25 @@
 <template>
   <div class="chat-page">
+    <!-- 数据源选择区 -->
+    <div class="datasource-selector">
+      <a-select
+        v-model:value="selectedDatasource"
+        placeholder="请选择数据源"
+        style="width: 100%"
+        :loading="loadingDatasources"
+        @change="onDatasourceChange"
+      >
+        <a-select-option
+          v-for="ds in datasources"
+          :key="ds.id"
+          :value="ds.id"
+        >
+          {{ ds.name }} ({{ ds.type.toUpperCase() }})
+        </a-select-option>
+      </a-select>
+      <a-tag v-if="selectedDatasource" color="green">已连接</a-tag>
+    </div>
+
     <!-- 消息区 -->
     <div ref="messagesEl" class="messages">
       <div
@@ -48,6 +68,7 @@
         v-model:value="question"
         :rows="3"
         placeholder="请输入您的问题，例如：查询最近7天的订单量"
+        :disabled="!selectedDatasource"
         @keydown.enter.prevent="send"
       />
       <a-button
@@ -55,6 +76,7 @@
         size="large"
         class="send-btn"
         :loading="loading"
+        :disabled="!selectedDatasource"
         @click="send"
       >
         发送
@@ -64,18 +86,22 @@
 </template>
 
 <script setup>
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, onMounted } from 'vue'
 
 const question = ref('')
 const messages = ref([
   {
     role: 'assistant',
     type: 'text',
-    content: '您好！我是 Agent Text2SQL 智能助手。您可以向我提问关于数据仓库的任何问题，我会帮您生成 SQL 并执行查询。'
+    content: '您好！我是 Agent Text2SQL 智能助手。请先选择数据源，然后向我提问关于数据仓库的任何问题，我会帮您生成 SQL 并执行查询。'
   }
 ])
 const loading = ref(false)
+const loadingDatasources = ref(false)
+const datasources = ref([])
+const selectedDatasource = ref(null)
 const messagesEl = ref(null)
+const currentStepsMsg = ref(null)
 
 const scrollToBottom = () => {
   nextTick(() => {
@@ -85,42 +111,156 @@ const scrollToBottom = () => {
   })
 }
 
+const fetchDatasources = async () => {
+  loadingDatasources.value = true
+  try {
+    const res = await fetch('/api/metadata/datasources')
+    if (res.ok) {
+      datasources.value = await res.json()
+    }
+  } catch (e) {
+    console.error('获取数据源失败', e)
+  } finally {
+    loadingDatasources.value = false
+  }
+}
+
+const onDatasourceChange = () => {
+  if (selectedDatasource.value) {
+    messages.value.push({
+      role: 'assistant',
+      type: 'text',
+      content: `已选择数据源！现在您可以开始提问了。`
+    })
+  }
+}
+
 const send = async () => {
   const q = question.value.trim()
-  if (!q || loading.value) return
+  if (!q || loading.value || !selectedDatasource.value) return
 
   messages.value.push({ role: 'user', type: 'text', content: q })
   question.value = ''
   loading.value = true
+  
+  // 添加进度步骤消息
+  currentStepsMsg.value = {
+    role: 'assistant',
+    type: 'steps',
+    steps: [
+      { text: '分析问题', status: 'running' },
+      { text: '生成 SQL', status: 'pending' },
+      { text: '执行查询', status: 'pending' },
+      { text: '返回结果', status: 'pending' }
+    ]
+  }
+  messages.value.push(currentStepsMsg.value)
   scrollToBottom()
 
   try {
-    const res = await fetch('/api/agent/run', {
+    const res = await fetch('/api/query', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question: q })
+      body: JSON.stringify({ query: q, datasource_id: selectedDatasource.value })
     })
-    const data = await res.json()
 
-    if (data.error) {
-      messages.value.push({ role: 'assistant', type: 'error', content: data.error })
-    } else if (data.result) {
+    if (!res.ok) {
+      throw new Error('请求失败')
+    }
+
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let result = null
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const dataStr = line.slice(6)
+          try {
+            const data = JSON.parse(dataStr)
+            handleSSEEvent(data)
+          } catch (e) {
+            // 忽略无效 JSON
+          }
+        }
+      }
+    }
+
+    // 移除步骤消息，添加最终结果
+    const stepsIndex = messages.value.indexOf(currentStepsMsg.value)
+    if (stepsIndex > -1) {
+      messages.value.splice(stepsIndex, 1)
+    }
+
+    if (result && result.columns && result.rows) {
       messages.value.push({
         role: 'assistant',
         type: 'table',
-        columns: data.result.columns,
-        rows: data.result.rows
+        columns: result.columns,
+        rows: result.rows
       })
     } else {
-      messages.value.push({ role: 'assistant', type: 'text', content: '未获取到结果' })
+      messages.value.push({
+        role: 'assistant',
+        type: 'text',
+        content: '查询完成，但没有返回结果。'
+      })
     }
+
   } catch (e) {
-    messages.value.push({ role: 'assistant', type: 'error', content: '请求失败，请稍后重试' })
+    // 移除步骤消息，添加错误
+    if (currentStepsMsg.value) {
+      const stepsIndex = messages.value.indexOf(currentStepsMsg.value)
+      if (stepsIndex > -1) {
+        messages.value.splice(stepsIndex, 1)
+      }
+    }
+    messages.value.push({
+      role: 'assistant',
+      type: 'error',
+      content: `请求失败：${e.message || '未知错误'}`
+    })
   } finally {
     loading.value = false
+    currentStepsMsg.value = null
     scrollToBottom()
   }
 }
+
+const handleSSEEvent = (data) => {
+  if (data.type === 'step') {
+    if (currentStepsMsg.value) {
+      const steps = currentStepsMsg.value.steps
+      // 更新步骤状态
+      if (data.step === 'extract_keywords') {
+        steps[0].status = 'done'
+        steps[1].status = 'running'
+      } else if (data.step === 'filter_tables' || data.step === 'filter_metrics') {
+        steps[1].status = 'done'
+        steps[2].status = 'running'
+      } else if (data.step === 'generate_sql') {
+        steps[2].status = 'done'
+        steps[3].status = 'running'
+      } else if (data.step === 'run_sql') {
+        steps[3].status = 'done'
+      }
+    }
+  } else if (data.type === 'result') {
+    result = data.data
+  }
+}
+
+onMounted(() => {
+  fetchDatasources()
+})
 </script>
 
 <style scoped>
@@ -129,6 +269,16 @@ const send = async () => {
   flex-direction: column;
   height: calc(100vh - 112px);
   max-width: 100%;
+}
+
+.datasource-selector {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #f5f5f5;
+  border-radius: 8px;
+  margin-bottom: 16px;
 }
 
 .messages {
