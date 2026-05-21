@@ -51,11 +51,12 @@ async def validate_config(state: MetaAgentState, runtime: Runtime[MetaAgentConte
     valid = len(errors) == 0
     if valid:
         writer({"type": "progress", "step": "validate_config", "status": "success", "message": "配置校验通过"})
+        writer({"type": "result", "data": {"meta_config": meta_config}})
         logger.info("validate_config 完成: 配置校验通过")
     else:
         writer({"type": "progress", "step": "validate_config", "status": "error", "message": f"发现 {len(errors)} 个问题"})
         logger.warning(f"validate_config 完成: 发现 {len(errors)} 个问题: {errors}")
-    
+
     return {
         "validation_result": {"valid": valid, "errors": errors},
         "error": None if valid else "; ".join(errors[:3])

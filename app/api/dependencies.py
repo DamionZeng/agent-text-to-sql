@@ -14,15 +14,26 @@ from app.repositories.mysql.meta.meta_mysql_repository import MetaMysqlRepositor
 from app.repositories.qdrant.column_qdrant_repository import ColumnQdrantRepository
 from app.repositories.qdrant.metric_qdrant_repository import MetricQdrantRepository
 from app.services.meta_knowledge_service import MetaKnowledgeService
+from app.services.metadata_service import MetadataService
 from app.services.query_service import QueryService
 
 async def get_meta_session():
     async with meta_mysql_client_manager.session_factory() as session:
-        yield session
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
 
 async def get_dw_session():
     async with dw_mysql_client_manager.session_factory() as session:
-        yield session
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
 
 async def get_embedding_client():
     return embedding_client_manager.client
@@ -80,4 +91,21 @@ async def get_query_service(
         metric_qdrant_repository=metric_qdrant_repository,
         meta_mysql_repository=meta_mysql_repository,
         dw_mysql_repository=dw_mysql_repository
+    )
+
+async def get_metadata_service(
+    embedding_client: HuggingFaceEndpointEmbeddings = Depends(get_embedding_client),
+    column_qdrant_repository: ColumnQdrantRepository = Depends(get_column_qdrant_repository),
+    value_es_repository: ValueEsRepository = Depends(get_value_es_repository),
+    metric_qdrant_repository: MetricQdrantRepository = Depends(get_metric_qdrant_repository),
+    meta_mysql_repository: MetaMysqlRepository = Depends(get_meta_mysql_repository),
+    datasource_repository: DatasourceRepository = Depends(get_datasource_repository)
+) -> MetadataService:
+    return MetadataService(
+        embedding_client=embedding_client,
+        column_qdrant_repository=column_qdrant_repository,
+        value_es_repository=value_es_repository,
+        metric_qdrant_repository=metric_qdrant_repository,
+        meta_mysql_repository=meta_mysql_repository,
+        datasource_repository=datasource_repository
     )

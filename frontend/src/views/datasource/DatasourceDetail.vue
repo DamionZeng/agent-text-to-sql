@@ -39,8 +39,9 @@
     <a-card v-if="metaConfig" class="editor-card" :bordered="false">
       <template #title>
         <div class="card-title">
-          <span>元数据编辑器</span>
+          <span>元数据编辑器 <span v-if="currentVersion" class="version-badge">v{{ currentVersion }}</span></span>
           <a-space>
+            <a-button @click="showVersionHistory">历史版本</a-button>
             <a-button @click="saveDraft" :loading="saving">保存草稿</a-button>
             <a-button type="primary" @click="publish" :loading="publishing">发布同步</a-button>
           </a-space>
@@ -167,6 +168,110 @@
         </template>
       </a-empty>
     </a-card>
+
+    <!-- 历史版本抽屉 -->
+    <a-drawer
+      v-model:open="versionDrawerVisible"
+      title="历史版本"
+      width="480"
+      placement="right"
+    >
+      <a-list :data-source="versions" :loading="loadingVersions" item-layout="horizontal">
+        <template #renderItem="{ item }">
+          <a-list-item>
+            <a-list-item-meta>
+              <template #title>
+                <span>v{{ item.version }}</span>
+                <a-tag v-if="item.version === currentVersion" color="blue" style="margin-left: 8px">当前</a-tag>
+              </template>
+              <template #description>
+                <div>{{ item.status === 'draft' ? '草稿' : '已发布' }}</div>
+                <div style="color: #8c8c8c; font-size: 12px">{{ formatTime(item.created_at) }}</div>
+              </template>
+            </a-list-item-meta>
+            <template #actions>
+              <a-button type="link" size="small" @click="viewVersion(item)">查看</a-button>
+              <a-button
+                type="link"
+                size="small"
+                :disabled="item.version === currentVersion"
+                @click="rollbackVersion(item)"
+              >
+                回滚
+              </a-button>
+            </template>
+          </a-list-item>
+        </template>
+      </a-list>
+    </a-drawer>
+
+    <!-- 版本预览弹窗 -->
+    <a-modal
+      v-model:open="previewVisible"
+      :title="`版本 v${previewVersion?.version} 预览`"
+      width="720px"
+      :footer="null"
+    >
+      <a-tabs v-if="previewConfig" default-active-key="tables">
+        <a-tab-pane key="tables" tab="表管理">
+          <a-collapse accordion>
+            <a-collapse-panel
+              v-for="table in previewConfig.tables"
+              :key="table.name"
+              :header="tableHeader(table)"
+            >
+              <a-table
+                :columns="columnColumns"
+                :data-source="table.columns"
+                row-key="name"
+                size="small"
+                :pagination="false"
+                bordered
+              >
+                <template #bodyCell="{ column, record }">
+                  <template v-if="column.key === 'role'">
+                    {{ record.role === 'primary_key' ? '主键' : record.role === 'foreign_key' ? '外键' : record.role === 'measure' ? '度量' : record.role === 'dimension' ? '维度' : record.role || '-' }}
+                  </template>
+                  <template v-if="column.key === 'description'">
+                    {{ record.description || '-' }}
+                  </template>
+                  <template v-if="column.key === 'alias'">
+                    {{ (record.alias && record.alias.length) ? record.alias.join(', ') : '-' }}
+                  </template>
+                  <template v-if="column.key === 'sync'">
+                    {{ record.sync ? '是' : '否' }}
+                  </template>
+                </template>
+              </a-table>
+            </a-collapse-panel>
+          </a-collapse>
+        </a-tab-pane>
+        <a-tab-pane key="metrics" tab="指标管理">
+          <a-table
+            :columns="metricColumns"
+            :data-source="previewConfig.metrics"
+            row-key="name"
+            size="small"
+            bordered
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'description'">
+                {{ record.description || '-' }}
+              </template>
+              <template v-if="column.key === 'relevant_columns'">
+                {{ (record.relevant_columns && record.relevant_columns.length) ? record.relevant_columns.join(', ') : '-' }}
+              </template>
+              <template v-if="column.key === 'alias'">
+                {{ (record.alias && record.alias.length) ? record.alias.join(', ') : '-' }}
+              </template>
+              <template v-if="column.key === 'action'">
+                -
+              </template>
+            </template>
+          </a-table>
+        </a-tab-pane>
+      </a-tabs>
+    </a-modal>
   </div>
 </template>
 
@@ -181,6 +286,7 @@ const datasourceId = route.params.id
 
 const datasource = ref(null)
 const metaConfig = ref(null)
+const currentVersion = ref(null)
 const activeTab = ref('tables')
 const expandedTables = ref([])
 const syncing = ref(false)
@@ -189,20 +295,28 @@ const publishing = ref(false)
 const testing = ref(false)
 const syncStatus = ref(null)
 
+const versionDrawerVisible = ref(false)
+const versions = ref([])
+const loadingVersions = ref(false)
+
+const previewVisible = ref(false)
+const previewConfig = ref(null)
+const previewVersion = ref(null)
+
 const columnColumns = [
   { title: '字段名', dataIndex: 'name', key: 'name', width: 140 },
   { title: '类型', dataIndex: 'type', key: 'type', width: 100 },
-  { title: '角色', key: 'role', width: 130 },
-  { title: '描述', key: 'description' },
-  { title: '别名', key: 'alias', width: 180 },
+  { title: '角色', key: 'role', width: 100 },
+  { title: '描述', key: 'description', width: 300 },
+  { title: '别名', key: 'alias', width: 160 },
   { title: '同步ES', key: 'sync', width: 80, align: 'center' }
 ]
 
 const metricColumns = [
   { title: '指标名', dataIndex: 'name', key: 'name', width: 150 },
-  { title: '描述', key: 'description' },
+  { title: '描述', key: 'description', width: 300 },
   { title: '关联字段', key: 'relevant_columns', width: 250 },
-  { title: '别名', key: 'alias', width: 180 },
+  { title: '别名', key: 'alias', width: 160 },
   { title: '操作', key: 'action', width: 80, align: 'center' }
 ]
 
@@ -225,6 +339,12 @@ const tableHeader = (table) => {
   return `${table.name} (${roleText}) - ${table.description || '无描述'}`
 }
 
+const formatTime = (dt) => {
+  if (!dt) return ''
+  const d = new Date(dt)
+  return d.toLocaleString('zh-CN')
+}
+
 const fetchDatasource = async () => {
   try {
     const res = await fetch(`/api/metadata/datasources/${datasourceId}`)
@@ -240,6 +360,7 @@ const fetchDraft = async () => {
     if (res.ok) {
       const draft = await res.json()
       metaConfig.value = draft.config_json
+      currentVersion.value = draft.version
       initAliasStr()
     }
   } catch (e) {
@@ -297,7 +418,7 @@ const startSync = async () => {
     const response = await fetch(`/api/metadata/datasources/${datasourceId}/sync`, {
       method: 'POST'
     })
-    
+
     if (!response.ok) {
       throw new Error('同步请求失败')
     }
@@ -311,12 +432,14 @@ const startSync = async () => {
       if (done) break
 
       buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
+      const events = buffer.split('\n\n')
+      buffer = events.pop() || ''
 
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = JSON.parse(line.slice(6))
+      for (const evt of events) {
+        const line = evt.trim()
+        if (!line.startsWith('data: ')) continue
+        try {
+          const data = JSON.parse(line.replace(/^data:\s*/, ''))
           if (data.type === 'progress') {
             syncStatus.value = { type: 'info', message: `${data.step}: ${data.message}` }
           } else if (data.type === 'result') {
@@ -328,6 +451,8 @@ const startSync = async () => {
             syncStatus.value = { type: 'error', message: data.message }
             syncing.value = false
           }
+        } catch (e) {
+          // 忽略无效 JSON
         }
       }
     }
@@ -341,12 +466,14 @@ const saveDraft = async () => {
   saving.value = true
   try {
     const res = await fetch(`/api/metadata/datasources/${datasourceId}/draft`, {
-      method: 'PUT',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ config_json: metaConfig.value })
     })
     if (res.ok) {
-      message.success('草稿保存成功')
+      const draft = await res.json()
+      currentVersion.value = draft.version
+      message.success(`草稿保存成功 (v${draft.version})`)
     } else {
       message.error('保存失败')
     }
@@ -370,6 +497,55 @@ const publish = async () => {
     message.error('发布失败')
   } finally {
     publishing.value = false
+  }
+}
+
+const showVersionHistory = async () => {
+  versionDrawerVisible.value = true
+  loadingVersions.value = true
+  try {
+    const res = await fetch(`/api/metadata/datasources/${datasourceId}/draft/versions`)
+    if (res.ok) {
+      versions.value = await res.json()
+    }
+  } catch (e) {
+    message.error('获取版本历史失败')
+  } finally {
+    loadingVersions.value = false
+  }
+}
+
+const viewVersion = async (item) => {
+  try {
+    const res = await fetch(`/api/metadata/datasources/${datasourceId}/draft/versions/${item.id}`)
+    if (res.ok) {
+      const draft = await res.json()
+      previewConfig.value = draft.config_json
+      previewVersion.value = item
+      previewVisible.value = true
+    }
+  } catch (e) {
+    message.error('获取版本详情失败')
+  }
+}
+
+const rollbackVersion = async (item) => {
+  try {
+    const res = await fetch(`/api/metadata/datasources/${datasourceId}/draft/${item.id}/rollback`, {
+      method: 'POST'
+    })
+    if (res.ok) {
+      const draft = await res.json()
+      metaConfig.value = draft.config_json
+      currentVersion.value = draft.version
+      initAliasStr()
+      message.success(`已回滚到 v${item.version}，当前版本 v${draft.version}`)
+      await showVersionHistory()
+    } else {
+      message.error('回滚失败')
+    }
+  } catch (e) {
+    message.error('回滚失败')
   }
 }
 
@@ -456,6 +632,13 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   width: 100%;
+}
+
+.version-badge {
+  font-size: 12px;
+  font-weight: 400;
+  color: #8c8c8c;
+  margin-left: 8px;
 }
 
 .meta-tabs :deep(.ant-tabs-nav) {

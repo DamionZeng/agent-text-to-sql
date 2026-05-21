@@ -7,6 +7,7 @@ class MetaDraft:
     id: str
     datasource_id: str
     config_json: dict
+    version: int
     status: str
     created_at: datetime
     updated_at: datetime

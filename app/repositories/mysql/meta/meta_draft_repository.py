@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.entities.meta_draft import MetaDraft
@@ -23,16 +23,36 @@ class MetaDraftRepository:
             return MetaDraftMapper.to_entity(result)
         return None
 
-    async def get_by_datasource_id(self, datasource_id: str) -> MetaDraft | None:
+    async def get_latest_by_datasource_id(self, datasource_id: str) -> MetaDraft | None:
         result = await self.session.execute(
             select(MetaDraftMySQL)
             .where(MetaDraftMySQL.datasource_id == datasource_id)
-            .order_by(MetaDraftMySQL.created_at.desc())
+            .order_by(MetaDraftMySQL.version.desc())
         )
         row = result.scalars().first()
         if row:
             return MetaDraftMapper.to_entity(row)
         return None
+
+    async def get_by_datasource_id(self, datasource_id: str) -> MetaDraft | None:
+        return await self.get_latest_by_datasource_id(datasource_id)
+
+    async def list_by_datasource_id(self, datasource_id: str) -> list[MetaDraft]:
+        result = await self.session.execute(
+            select(MetaDraftMySQL)
+            .where(MetaDraftMySQL.datasource_id == datasource_id)
+            .order_by(MetaDraftMySQL.version.desc())
+        )
+        rows = result.scalars().all()
+        return [MetaDraftMapper.to_entity(row) for row in rows]
+
+    async def get_next_version(self, datasource_id: str) -> int:
+        result = await self.session.execute(
+            select(func.max(MetaDraftMySQL.version))
+            .where(MetaDraftMySQL.datasource_id == datasource_id)
+        )
+        max_version = result.scalar()
+        return (max_version or 0) + 1
 
     async def update(self, meta_draft: MetaDraft) -> MetaDraft:
         model = MetaDraftMapper.to_model(meta_draft)
