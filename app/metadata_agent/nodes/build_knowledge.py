@@ -6,7 +6,6 @@ from app.core.log import logger
 
 
 async def build_knowledge(state: MetaAgentState, runtime: Runtime[MetaAgentContext]) -> dict:
-    """调用 MetaKnowledgeService 写入 DB + 向量库 + ES"""
     writer = runtime.stream_writer
     writer({"type": "progress", "step": "build_knowledge", "status": "running", "message": "正在同步到知识库..."})
 
@@ -15,6 +14,7 @@ async def build_knowledge(state: MetaAgentState, runtime: Runtime[MetaAgentConte
 
     try:
         from app.conf.meta_config import MetaConfig, TableConfig, ColumnConfig, MetricConfig
+        from app.clients.datasource import datasource_manager
 
         tables = []
         for t in meta_config.get("tables", []):
@@ -46,46 +46,45 @@ async def build_knowledge(state: MetaAgentState, runtime: Runtime[MetaAgentConte
         config = MetaConfig(tables=tables, metrics=metrics)
 
         writer({"type": "progress", "step": "build_knowledge", "status": "running", "message": "写入 MySQL..."})
-        
+
         from app.services.meta_knowledge_service import MetaKnowledgeService
-        from app.clients.mysql_client_manager import meta_mysql_client_manager, dw_mysql_client_manager
+        from app.clients.mysql_client_manager import meta_mysql_client_manager
         from app.clients.qdrant_client_manager import qdrant_client_manager
         from app.clients.es_client_manager import es_client_manager
         from app.clients.embedding_client_manager import embedding_client_manager
         from app.repositories.mysql.meta.meta_mysql_repository import MetaMysqlRepository
-        from app.repositories.mysql.meta.datasource_repository import DatasourceRepository
-        from app.repositories.mysql.dw.dw_mysql_repository import DWMysqlRepository
         from app.repositories.qdrant.column_qdrant_repository import ColumnQdrantRepository
         from app.repositories.qdrant.metric_qdrant_repository import MetricQdrantRepository
         from app.repositories.es.value_es_respository import ValueEsRepository
 
-        async with meta_mysql_client_manager.session_factory() as meta_session:
-            async with dw_mysql_client_manager.session_factory() as dw_session:
-                datasource_repository = DatasourceRepository(meta_session)
-                datasource = await datasource_repository.get_by_id(datasource_id)
-                
-                if not datasource:
-                    raise ValueError(f"数据源不存在: {datasource_id}")
-                
-                datasource_prefix = f"{datasource.type}_{datasource.database}_"
-                
+        datasource_repository = runtime.context["datasource_repository"]
+        datasource = await datasource_repository.get_by_id(datasource_id)
+        if not datasource:
+            raise ValueError(f"数据源不存在: {datasource_id}")
+
+        datasource_manager.register(datasource)
+        ds_config = datasource_manager.get_config(datasource_id)
+        datasource_prefix = f"{ds_config.db_type}_{datasource.database}_"
+
+        async with datasource_manager.get_session(datasource_id) as dw_session:
+            async with meta_mysql_client_manager.session_factory() as meta_session:
                 meta_mysql_repository = MetaMysqlRepository(meta_session)
-                dw_mysql_repository = DWMysqlRepository(dw_session)
                 column_qdrant_repository = ColumnQdrantRepository(qdrant_client_manager.client)
                 metric_qdrant_repository = MetricQdrantRepository(qdrant_client_manager.client)
                 value_es_repository = ValueEsRepository(es_client_manager.client)
-                
+
                 service = MetaKnowledgeService(
                     meta_mysql_repository=meta_mysql_repository,
-                    dw_mysql_repository=dw_mysql_repository,
+                    dw_session=dw_session,
+                    datasource_type=ds_config.db_type,
                     column_qdrant_repository=column_qdrant_repository,
                     metric_qdrant_repository=metric_qdrant_repository,
                     value_es_repository=value_es_repository,
                     embedding_client=embedding_client_manager.client
                 )
-                
+
                 await service.build_from_config(config, datasource_prefix, datasource_id)
-                
+
                 await meta_session.commit()
 
         writer({"type": "progress", "step": "build_knowledge", "status": "success", "message": "同步完成"})

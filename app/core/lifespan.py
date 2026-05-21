@@ -5,7 +5,7 @@ from sqlalchemy import inspect, text
 
 from app.clients.embedding_client_manager import embedding_client_manager
 from app.clients.es_client_manager import es_client_manager
-from app.clients.mysql_client_manager import meta_mysql_client_manager, dw_mysql_client_manager
+from app.clients.mysql_client_manager import meta_mysql_client_manager
 from app.clients.qdrant_client_manager import qdrant_client_manager
 from app.models.base import Base
 from app.models.datasource import DatasourceMySQL
@@ -22,7 +22,6 @@ async def lifespan(app: FastAPI):
     qdrant_client_manager.init()
     es_client_manager.init()
     meta_mysql_client_manager.init()
-    dw_mysql_client_manager.init()
 
     # 自动同步 meta 数据库表结构
     await _init_meta_tables()
@@ -30,10 +29,12 @@ async def lifespan(app: FastAPI):
     yield
     # FastAPI 应用结束前执行
 
+    from app.clients.datasource import datasource_manager
+    await datasource_manager.close_all()
+
     await qdrant_client_manager.close()
     await es_client_manager.close()
     await meta_mysql_client_manager.close()
-    await dw_mysql_client_manager.close()
 
 
 async def _init_meta_tables():

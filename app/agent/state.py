@@ -35,8 +35,9 @@ class DBInfoState(TypedDict):
 
 class DataAgentState(TypedDict):
 
-    query: str                                               # 用户查询输入
-    keywords: list[str]                                      # 抽取关键词后返回的关键词列表
+    query: str
+    datasource_id: str
+    keywords: list[str]
 
     retrieved_column_infos: list[ColumnInfo]                 # recall_column 返回的信息
     retrieved_metric_infos: list[MetricInfo]                 # recall_metric 返回的信息

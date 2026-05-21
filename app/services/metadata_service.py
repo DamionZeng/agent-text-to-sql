@@ -31,6 +31,13 @@ class MetadataService:
         self.datasource_repository = datasource_repository
 
     async def sync(self, datasource_id: str):
+        from app.clients.datasource import datasource_manager
+
+        if not datasource_manager.is_registered(datasource_id):
+            datasource = await self.datasource_repository.get_by_id(datasource_id)
+            if datasource:
+                datasource_manager.register(datasource)
+
         context: MetaAgentContext = {
             "llm": llm,
             "datasource_repository": self.datasource_repository,

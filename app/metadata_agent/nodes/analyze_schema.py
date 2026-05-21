@@ -1,7 +1,4 @@
-import json
-
 from langgraph.runtime import Runtime
-from sqlalchemy import text
 
 from app.metadata_agent.context import MetaAgentContext
 from app.metadata_agent.state import MetaAgentState
@@ -9,48 +6,44 @@ from app.core.log import logger
 
 
 async def analyze_schema(state: MetaAgentState, runtime: Runtime[MetaAgentContext]) -> dict:
-    """连接数据源，获取原始 Schema"""
     writer = runtime.stream_writer
     writer({"type": "progress", "step": "analyze_schema", "status": "running", "message": "正在连接数据源..."})
 
     datasource_id = state["datasource_id"]
 
     try:
-        from app.clients.mysql_client_manager import dw_mysql_client_manager
+        from app.clients.datasource import datasource_manager
+        from app.repositories.db_executor import get_executor
 
-        session_factory = dw_mysql_client_manager.session_factory
-        async with session_factory() as session:
+        datasource_repository = runtime.context["datasource_repository"]
+        datasource = await datasource_repository.get_by_id(datasource_id)
+        if not datasource:
+            raise ValueError(f"数据源不存在: {datasource_id}")
+
+        datasource_manager.register(datasource)
+        config = datasource_manager.get_config(datasource_id)
+        executor = get_executor(config.db_type)
+
+        async with datasource_manager.get_session(datasource_id) as session:
             writer({"type": "progress", "step": "analyze_schema", "status": "running", "message": "获取表列表..."})
-            result = await session.execute(text("SHOW TABLES"))
-            tables = [row[0] for row in result.fetchall()]
+
+            tables = await executor.list_tables(session, datasource.database)
 
             raw_schema = []
             for i, table_name in enumerate(tables):
                 writer({"type": "progress", "step": "analyze_schema", "status": "running", "message": f"分析表 {table_name} ({i+1}/{len(tables)})"})
-                
-                result = await session.execute(text(f"SHOW COLUMNS FROM {table_name}"))
+
+                columns_meta = await executor.get_columns(session, table_name, datasource.database)
                 columns = []
-                for row in result.fetchall():
-                    col_name = row[0]
-                    col_type = row[1]
+                for col in columns_meta:
                     try:
-                        sample_result = await session.execute(
-                            text(f"SELECT DISTINCT `{col_name}` FROM {table_name} LIMIT 5")
-                        )
-                        examples = [str(r[0]) for r in sample_result.fetchall() if r[0] is not None]
+                        examples = await executor.get_column_values(session, table_name, col.name, 5)
+                        examples = [str(v) for v in examples if v is not None]
                     except Exception:
                         examples = []
+                    columns.append({"name": col.name, "type": col.type, "examples": examples})
 
-                    columns.append({
-                        "name": col_name,
-                        "type": col_type,
-                        "examples": examples
-                    })
-
-                raw_schema.append({
-                    "name": table_name,
-                    "columns": columns
-                })
+                raw_schema.append({"name": table_name, "columns": columns})
 
         writer({"type": "progress", "step": "analyze_schema", "status": "success", "message": f"获取到 {len(raw_schema)} 张表"})
         logger.info(f"analyze_schema 完成，获取到 {len(raw_schema)} 张表")

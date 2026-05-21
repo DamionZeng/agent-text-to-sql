@@ -103,22 +103,21 @@ async def delete_datasource(
 async def test_datasource_connection_by_payload(
     schema: DatasourceTestSchema
 ):
-    """在新增数据源前测试连接（不需要 datasource_id）"""
     try:
-        from sqlalchemy.ext.asyncio import create_async_engine
-        if schema.type == "mysql":
-            url = f"mysql+asyncmy://{schema.username}:{schema.password}@{schema.host}:{schema.port}/{schema.database}?charset=utf8mb4"
-        elif schema.type == "postgresql":
-            url = f"postgresql+asyncpg://{schema.username}:{schema.password}@{schema.host}:{schema.port}/{schema.database}"
-        else:
-            return {"success": False, "message": f"不支持的数据源类型: {schema.type}"}
+        from app.clients.datasource import datasource_manager, DatasourceConfigBuilder
 
-        engine = create_async_engine(url, pool_pre_ping=True)
-        async with engine.connect() as conn:
-            from sqlalchemy import text
-            await conn.execute(text("SELECT 1"))
-        await engine.dispose()
-        return {"success": True, "message": "连接成功"}
+        config = DatasourceConfigBuilder() \
+            .datasource_id(f"test_{schema.host}_{schema.port}_{schema.database}") \
+            .db_type(schema.type) \
+            .host(schema.host) \
+            .port(schema.port) \
+            .database(schema.database) \
+            .username(schema.username) \
+            .password(schema.password) \
+            .build()
+
+        success = await datasource_manager.test_connection_by_config(config)
+        return {"success": success, "message": "连接成功" if success else "连接失败"}
     except Exception as e:
         return {"success": False, "message": f"连接失败: {str(e)}"}
 
@@ -133,18 +132,16 @@ async def test_datasource_connection(
         raise HTTPException(status_code=404, detail="数据源不存在")
 
     try:
-        from sqlalchemy.ext.asyncio import create_async_engine
-        from sqlalchemy import text
-        url = f"mysql+asyncmy://{ds.username}:{ds.password}@{ds.host}:{ds.port}/{ds.database}?charset=utf8mb4"
-        engine = create_async_engine(url, pool_pre_ping=True)
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
-        await engine.dispose()
+        from app.clients.datasource import datasource_manager
 
-        ds.status = "active"
+        success = await datasource_manager.test_connection(ds)
+        if success:
+            ds.status = "active"
+        else:
+            ds.status = "error"
         ds.updated_at = datetime.now()
         await repo.update(ds)
-        return {"success": True, "message": "连接成功"}
+        return {"success": success, "message": "连接成功" if success else "连接失败"}
     except Exception as e:
         ds.status = "error"
         ds.updated_at = datetime.now()
@@ -264,6 +261,7 @@ async def publish_metadata(
 
     try:
         from app.conf.meta_config import MetaConfig, TableConfig, ColumnConfig, MetricConfig
+        from app.clients.datasource import datasource_manager
 
         config_data = draft.config_json
         tables = []
@@ -297,8 +295,12 @@ async def publish_metadata(
 
         meta_config = MetaConfig(tables=tables, metrics=metrics)
 
-        datasource_prefix = f"{ds.type}_{ds.database}_"
-        await meta_service.build_from_config(meta_config, datasource_prefix, datasource_id)
+        datasource_manager.register(ds)
+        ds_config = datasource_manager.get_config(datasource_id)
+        datasource_prefix = f"{ds_config.db_type}_{ds.database}_"
+
+        async with datasource_manager.get_session(datasource_id) as dw_session:
+            await meta_service.build_from_config_with_session(meta_config, datasource_prefix, datasource_id, dw_session, ds_config.db_type)
 
         draft.status = "published"
         draft.updated_at = datetime.now()

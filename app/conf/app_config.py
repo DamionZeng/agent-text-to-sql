@@ -70,7 +70,6 @@ class AppSettings(BaseSettings):
 
     logging: LoggingSettings = LoggingSettings()
     db_meta: DatabaseSettings = Field(default_factory=DatabaseSettings)
-    db_dw: DatabaseSettings = Field(default_factory=DatabaseSettings)
     qdrant: QdrantSettings = QdrantSettings()
     embedding: EmbeddingSettings = EmbeddingSettings()
     es: ESSettings = ESSettings()
@@ -85,4 +84,4 @@ conf = settings
 
 if __name__ == "__main__":
     # Print settings to verify (excluding sensitive info)
-    print(settings.model_dump(exclude={"llm": {"api_key"}, "db_meta": {"password"}, "db_dw": {"password"}}))
+    print(settings.model_dump(exclude={"llm": {"api_key"}, "db_meta": {"password"}}))
