@@ -408,10 +408,9 @@ Repository (数据访问层)   → 纯数据读写，不包含业务判断
 | 🔴 高 | SQL 注入风险 (f-string 拼接表名/列名) | db_executor/mysql_executor.py, postgresql_executor.py, meta_mysql_repository.py | ✅ 已修复 |
 | 🔴 高 | 密码明文存储 (注释标注 AES 但未实现) | models/datasource.py, datasource_mapper.py | ✅ 已修复 |
 | 🔴 高 | 删除数据源不级联清理 (Qdrant/ES/MySQL/DatasourceManager) | metadata_router.py delete_datasource | ✅ 已修复 |
-| 🟡 中 | build_from_config_with_session 临时替换字段非线程安全 | meta_knowledge_service.py | |
-| 🟡 中 | 数据源注册分散，应用重启后需首次请求才注册 | 多处 register() 调用 | |
-| 🟡 中 | publish 与 build_knowledge 中 JSON→MetaConfig 解析重复 | metadata_router.py, build_knowledge.py | |
-| 🟡 中 | build_meta_knowledge.py 传了错误的 dw_session | scripts/build_meta_knowledge.py | |
+| 🟡 中 | build_from_config_with_session 临时替换字段非线程安全 | meta_knowledge_service.py | ✅ 已修复 |
+| 🟡 中 | 数据源注册分散，应用重启后需首次请求才注册 | 多处 register() 调用 | ✅ 已修复 |
+| 🟡 中 | publish 与 build_knowledge 中 JSON→MetaConfig 解析重复 | metadata_router.py, build_knowledge.py | ✅ 已修复 |
 | 🟢 低 | 缺少 CORS 中间件 | main.py | |
 | 🟢 低 | 缺少全局异常处理 | main.py | |
 | 🟢 低 | Qdrant 缺少 Payload 索引 | column_qdrant_repository.py, metric_qdrant_repository.py | |

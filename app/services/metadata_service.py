@@ -215,7 +215,7 @@ class MetadataService:
 
     async def publish_metadata(self, datasource_id: str):
         from app.clients.datasource import datasource_manager
-        from app.conf.meta_config import MetaConfig, TableConfig, ColumnConfig, MetricConfig
+        from app.conf.meta_config import MetaConfig
 
         ds = await self.datasource_repository.get_by_id(datasource_id)
         if not ds:
@@ -226,36 +226,10 @@ class MetadataService:
             raise ValueError("草稿不存在，请先保存草稿")
 
         config_data = draft.config_json
-        tables = []
-        if config_data.get("tables"):
-            for t in config_data["tables"]:
-                columns = []
-                for c in t.get("columns", []):
-                    columns.append(ColumnConfig(
-                        name=c["name"],
-                        role=c.get("role", "dimension"),
-                        description=c.get("description", ""),
-                        alias=c.get("alias", []),
-                        sync=c.get("sync", False)
-                    ))
-                tables.append(TableConfig(
-                    name=t["name"],
-                    role=t.get("role", "dim"),
-                    description=t.get("description", ""),
-                    columns=columns
-                ))
+        if config_data is None:
+            raise ValueError("草稿配置为空")
 
-        metrics = []
-        if config_data.get("metrics"):
-            for m in config_data["metrics"]:
-                metrics.append(MetricConfig(
-                    name=m["name"],
-                    description=m.get("description", ""),
-                    relevant_columns=m.get("relevant_columns", []),
-                    alias=m.get("alias", [])
-                ))
-
-        meta_config = MetaConfig(tables=tables, metrics=metrics)
+        meta_config = MetaConfig.from_dict(config_data)
 
         datasource_manager.register(ds)
         ds_config = datasource_manager.get_config(datasource_id)

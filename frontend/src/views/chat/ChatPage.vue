@@ -186,19 +186,7 @@ const send = async () => {
       }
     }
 
-    const stepsIndex = messages.value.indexOf(currentStepsMsg.value)
-    if (stepsIndex > -1) {
-      messages.value.splice(stepsIndex, 1)
-    }
-
   } catch (e) {
-    // 移除步骤消息，添加错误
-    if (currentStepsMsg.value) {
-      const stepsIndex = messages.value.indexOf(currentStepsMsg.value)
-      if (stepsIndex > -1) {
-        messages.value.splice(stepsIndex, 1)
-      }
-    }
     messages.value.push({
       role: 'assistant',
       type: 'error',

@@ -14,6 +14,9 @@ from app.models.table_info import TableInfoMySQL
 from app.models.column_info import ColumnInfoMySQL
 from app.models.metric_info import MetricInfoMySQL
 from app.models.column_metric import ColumnMetricMySQL
+from app.core.log import logger
+from app.clients.datasource import datasource_manager
+from app.repositories.mysql.meta.datasource_repository import DatasourceRepository
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -26,10 +29,11 @@ async def lifespan(app: FastAPI):
     # 自动同步 meta 数据库表结构
     await _init_meta_tables()
 
+    await _register_datasources()
+
     yield
     # FastAPI 应用结束前执行
 
-    from app.clients.datasource import datasource_manager
     await datasource_manager.close_all()
 
     await qdrant_client_manager.close()
@@ -72,3 +76,16 @@ def _sync_missing_columns(sync_conn):
                 comment = f" COMMENT '{column.comment}'" if column.comment else ''
                 sql = f"ALTER TABLE `{table_name}` ADD COLUMN `{column.name}` {col_type}{nullable}{default}{comment}"
                 sync_conn.execute(text(sql))
+
+
+async def _register_datasources():
+    """启动时预注册所有数据源到 datasource_manager"""
+    try:
+        async with meta_mysql_client_manager.session_factory() as session:
+            repo = DatasourceRepository(session)
+            datasources = await repo.list_all()
+            for ds in datasources:
+                datasource_manager.register(ds)
+            logger.info(f"启动时预注册 {len(datasources)} 个数据源")
+    except Exception as e:
+        logger.warning(f"预注册数据源失败（可能表尚未创建）: {e}")

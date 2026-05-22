@@ -20,10 +20,11 @@
           v-for="(step, idx) in steps"
           :key="idx"
           class="timeline-item"
-          :class="step.status"
+          :class="normalizedStepClass(step.status)"
         >
           <div class="timeline-dot">
-            <CheckCircleFilled v-if="step.status === 'done'" />
+            <CheckCircleFilled v-if="isSuccessStatus(step.status)" />
+            <CloseCircleFilled v-else-if="step.status === 'error'" />
             <LoadingOutlined v-else-if="step.status === 'running'" class="spin" />
             <ClockCircleOutlined v-else />
           </div>
@@ -42,6 +43,7 @@ import { ref, computed } from 'vue'
 import {
   LoadingOutlined,
   CheckCircleFilled,
+  CloseCircleFilled,
   RightOutlined,
   DownOutlined,
   ClockCircleOutlined
@@ -56,15 +58,24 @@ const props = defineProps({
 
 const isExpanded = ref(false)
 
+const isSuccessStatus = (status) => status === 'done' || status === 'success'
+
 const isFinished = computed(() => {
   if (!props.steps.length) return false
-  return props.steps.every(s => s.status === 'done')
+  return props.steps.every(s => isSuccessStatus(s.status))
 })
+
+const normalizedStepClass = (status) => {
+  if (status === 'success') return 'done'
+  return status
+}
 
 const displayTitle = computed(() => {
   if (!props.steps.length) return '准备中...'
   const running = props.steps.find(s => s.status === 'running')
   if (running) return running.text
+  const errorStep = props.steps.find(s => s.status === 'error')
+  if (errorStep) return `失败: ${errorStep.text}`
   if (isFinished.value) return '任务已完成'
   return props.steps[0]?.text || '准备中...'
 })
@@ -193,6 +204,10 @@ const toggle = () => {
   color: #52c41a;
 }
 
+.timeline-item.error .timeline-dot {
+  color: #ff4d4f;
+}
+
 .timeline-item.running .timeline-dot {
   color: #1677ff;
 }
@@ -218,6 +233,10 @@ const toggle = () => {
 
 .timeline-item.done .step-name {
   color: #52c41a;
+}
+
+.timeline-item.error .step-name {
+  color: #ff4d4f;
 }
 
 .timeline-item.running .step-name {

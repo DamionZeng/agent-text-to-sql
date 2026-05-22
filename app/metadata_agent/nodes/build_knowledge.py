@@ -13,37 +13,10 @@ async def build_knowledge(state: MetaAgentState, runtime: Runtime[MetaAgentConte
     datasource_id = state["datasource_id"]
 
     try:
-        from app.conf.meta_config import MetaConfig, TableConfig, ColumnConfig, MetricConfig
+        from app.conf.meta_config import MetaConfig
         from app.clients.datasource import datasource_manager
 
-        tables = []
-        for t in meta_config.get("tables", []):
-            columns = []
-            for c in t.get("columns", []):
-                columns.append(ColumnConfig(
-                    name=c["name"],
-                    role=c.get("role", "dimension"),
-                    description=c.get("description", ""),
-                    alias=c.get("alias", []),
-                    sync=c.get("sync", False)
-                ))
-            tables.append(TableConfig(
-                name=t["name"],
-                role=t.get("role", "dim"),
-                description=t.get("description", ""),
-                columns=columns
-            ))
-
-        metrics = []
-        for m in meta_config.get("metrics", []):
-            metrics.append(MetricConfig(
-                name=m["name"],
-                description=m.get("description", ""),
-                relevant_columns=m.get("relevant_columns", []),
-                alias=m.get("alias", [])
-            ))
-
-        config = MetaConfig(tables=tables, metrics=metrics)
+        config = MetaConfig.from_dict(meta_config)
 
         writer({"type": "progress", "step": "同步到知识库", "status": "running", "message": "写入 MySQL..."})
 
@@ -88,13 +61,13 @@ async def build_knowledge(state: MetaAgentState, runtime: Runtime[MetaAgentConte
                 await meta_session.commit()
 
         writer({"type": "progress", "step": "同步到知识库", "status": "success", "message": "同步完成"})
-        logger.info(f"build_knowledge 完成: {len(tables)} 表, {len(metrics)} 指标")
+        logger.info(f"build_knowledge 完成: {len(config.tables or [])} 表, {len(config.metrics or [])} 指标")
         return {
             "meta_config": meta_config,
             "sync_result": {
-                "tables": len(tables),
-                "columns": sum(len(t.columns) for t in tables),
-                "metrics": len(metrics)
+                "tables": len(config.tables or []),
+                "columns": sum(len(t.columns) for t in (config.tables or [])),
+                "metrics": len(config.metrics or [])
             },
             "error": None
         }

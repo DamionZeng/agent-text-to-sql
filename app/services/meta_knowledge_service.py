@@ -1,9 +1,7 @@
 import uuid
 from dataclasses import asdict
-from pathlib import Path
 
 from langchain_huggingface import HuggingFaceEndpointEmbeddings
-from omegaconf import OmegaConf
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.conf.meta_config import MetaConfig
@@ -39,13 +37,27 @@ class MetaKnowledgeService:
         self.value_es_repository: ValueEsRepository = value_es_repository
         self.metric_qdrant_repository: MetricQdrantRepository = metric_qdrant_repository
 
-    async def _get_column_type(self, table_name: str) -> dict[str, str]:
-        return await self._executor.get_column_types(self.dw_session, table_name)
+    async def _get_column_type(self, table_name: str, session: AsyncSession = None, executor: DbQueryExecutor = None) -> dict[str, str]:
+        sess = session if session is not None else self.dw_session
+        exec_obj = executor if executor is not None else self._executor
+        try:
+            return await exec_obj.get_column_types(sess, table_name)
+        except Exception as e:
+            logger.warning(f"无法获取表 {table_name} 的列类型: {e}")
+            return {}
 
-    async def _get_column_value(self, table_name: str, column_name: str, limit: int = 10) -> list:
-        return await self._executor.get_column_values(self.dw_session, table_name, column_name, limit)
+    async def _get_column_value(self, table_name: str, column_name: str, limit: int = 10,
+                                 session: AsyncSession = None, executor: DbQueryExecutor = None) -> list:
+        sess = session if session is not None else self.dw_session
+        exec_obj = executor if executor is not None else self._executor
+        try:
+            return await exec_obj.get_column_values(sess, table_name, column_name, limit)
+        except Exception as e:
+            logger.warning(f"无法获取表 {table_name}.{column_name} 的值: {e}")
+            return []
 
-    async def _save_tables_to_meta_db(self, meta_config: MetaConfig, datasource_prefix: str = "", datasource_id: str = "") -> list[ColumnInfo]:
+    async def _save_tables_to_meta_db(self, meta_config: MetaConfig, datasource_prefix: str = "", datasource_id: str = "",
+                                       session: AsyncSession = None, executor: DbQueryExecutor = None) -> list[ColumnInfo]:
         table_infos: list[TableInfo] = []
         column_infos: list[ColumnInfo] = []
         for table in meta_config.tables:
@@ -59,15 +71,15 @@ class MetaKnowledgeService:
                 datasource_id=datasource_id,
             )
             table_infos.append(table_info)
-            column_types = await self._get_column_type(table.name)
+            column_types = await self._get_column_type(table.name, session, executor)
 
             for column in table.columns:
-                column_values = await self._get_column_value(table.name, column.name)
+                column_values = await self._get_column_value(table.name, column.name, 10, session, executor)
 
                 column_info = ColumnInfo(
                     id=f"{table_id}.{column.name}",
                     name=column.name,
-                    type=column_types[column.name],
+                    type=column_types.get(column.name, "varchar"),
                     role=column.role,
                     examples=column_values,
                     description=column.description,
@@ -118,7 +130,8 @@ class MetaKnowledgeService:
 
         await self.column_qdrant_repository.upsert(ids, embeddings, payloads)
 
-    async def _save_values_to_es(self, meta_config: MetaConfig, datasource_prefix: str = ""):
+    async def _save_values_to_es(self, meta_config: MetaConfig, datasource_prefix: str = "",
+                                  session: AsyncSession = None, executor: DbQueryExecutor = None):
         await self.value_es_repository.ensure_index()
         value_infos: list[ValueInfo] = []
         column_ids: list[str] = []
@@ -128,7 +141,7 @@ class MetaKnowledgeService:
                 column_id = f"{table_id}.{column.name}"
                 if column.sync:
                     column_ids.append(column_id)
-                    current_column_values = await self._get_column_value(table.name, column.name, 100000)
+                    current_column_values = await self._get_column_value(table.name, column.name, 100000, session, executor)
                     current_value_infos = [ValueInfo(
                         id=f"{table_id}.{column.name}.{current_column_value}",
                         value=current_column_value,
@@ -204,32 +217,18 @@ class MetaKnowledgeService:
 
         await self.metric_qdrant_repository.upsert(ids, embeddings, payloads)
 
-    async def build(self, config_path: Path):
-        context = OmegaConf.load(config_path)
-        schema = OmegaConf.structured(MetaConfig)
-        meta_config: MetaConfig = OmegaConf.to_object(OmegaConf.merge(schema,context))
-        logger.info("加载配置文件成功")
-        if meta_config.tables:
-            column_infos = await self._save_tables_to_meta_db(meta_config, "", "")
-            logger.info("保存表信息和字段信息到数据库成功")
-            await self._save_columns_to_qdrant(column_infos)
-            logger.info("字段信息向量索引success")
-            await self._save_values_to_es(meta_config, "")
-            logger.info("全文索引success")
-        if meta_config.metrics:
-            metric_infos = await self._save_metrics_to_meta_db(meta_config, "")
-            logger.info("指标信息入库成功")
-            await self._save_metrics_to_qdrant(metric_infos)
-            logger.info("指标信息向量化成功")
+    async def build_from_config(self, meta_config: MetaConfig, datasource_prefix: str = "", datasource_id: str = "",
+                                 session: AsyncSession = None, executor: DbQueryExecutor = None):
+        sess = session if session is not None else self.dw_session
+        exec_obj = executor if executor is not None else self._executor
 
-    async def build_from_config(self, meta_config: MetaConfig, datasource_prefix: str = "", datasource_id: str = ""):
         logger.info("开始从配置对象构建知识库")
         if meta_config.tables:
-            column_infos = await self._save_tables_to_meta_db(meta_config, datasource_prefix, datasource_id)
+            column_infos = await self._save_tables_to_meta_db(meta_config, datasource_prefix, datasource_id, sess, exec_obj)
             logger.info("保存表信息和字段信息到数据库成功")
             await self._save_columns_to_qdrant(column_infos)
             logger.info("字段信息向量索引success")
-            await self._save_values_to_es(meta_config, datasource_prefix)
+            await self._save_values_to_es(meta_config, datasource_prefix, sess, exec_obj)
             logger.info("全文索引success")
         if meta_config.metrics:
             metric_infos = await self._save_metrics_to_meta_db(meta_config, datasource_prefix)
@@ -239,15 +238,5 @@ class MetaKnowledgeService:
         logger.info("知识库构建完成")
 
     async def build_from_config_with_session(self, meta_config: MetaConfig, datasource_prefix: str, datasource_id: str, dw_session: AsyncSession, datasource_type: str):
-        original_session = self.dw_session
-        original_type = self.datasource_type
-        original_executor = self._executor
-        try:
-            self.dw_session = dw_session
-            self.datasource_type = datasource_type
-            self._executor = get_executor(datasource_type)
-            await self.build_from_config(meta_config, datasource_prefix, datasource_id)
-        finally:
-            self.dw_session = original_session
-            self.datasource_type = original_type
-            self._executor = original_executor
+        executor = get_executor(datasource_type)
+        await self.build_from_config(meta_config, datasource_prefix, datasource_id, session=dw_session, executor=executor)
