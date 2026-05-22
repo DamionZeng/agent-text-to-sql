@@ -12,7 +12,7 @@ from app.core.log import logger
 async def infer_columns(state: MetaAgentState, runtime: Runtime[MetaAgentContext]) -> dict:
     """AI 为每个字段生成描述、别名、角色"""
     writer = runtime.stream_writer
-    writer({"type": "progress", "step": "infer_columns", "status": "running", "message": "AI 正在生成字段描述..."})
+    writer({"type": "progress", "step": "生成字段描述", "status": "running", "message": "AI 正在生成字段描述..."})
 
     raw_schema = state["raw_schema"]
     table_configs = state["table_configs"]
@@ -37,7 +37,7 @@ async def infer_columns(state: MetaAgentState, runtime: Runtime[MetaAgentContext
 
     for batch_idx in range(0, len(all_columns), batch_size):
         batch_num = batch_idx // batch_size + 1
-        writer({"type": "progress", "step": "infer_columns", "status": "running", "message": f"处理字段批次 {batch_num}/{total_batches}"})
+        writer({"type": "progress", "step": "生成字段描述", "status": "running", "message": f"处理字段批次 {batch_num}/{total_batches}"})
         
         batch = all_columns[batch_idx:batch_idx + batch_size]
         columns_text = "\n\n".join([
@@ -74,6 +74,6 @@ async def infer_columns(state: MetaAgentState, runtime: Runtime[MetaAgentContext
                     "sync": False
                 })
 
-    writer({"type": "progress", "step": "infer_columns", "status": "success", "message": f"生成 {len(column_configs)} 个字段的描述"})
+    writer({"type": "progress", "step": "生成字段描述", "status": "success", "message": f"生成 {len(column_configs)} 个字段的描述"})
     logger.info(f"infer_columns 完成: {len(column_configs)} 个字段")
     return {"column_configs": column_configs, "error": None}

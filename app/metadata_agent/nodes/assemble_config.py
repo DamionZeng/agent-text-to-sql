@@ -8,7 +8,7 @@ from app.core.log import logger
 async def assemble_config(state: MetaAgentState, runtime: Runtime[MetaAgentContext]) -> dict:
     """组装成完整的 MetaConfig"""
     writer = runtime.stream_writer
-    writer({"type": "progress", "step": "assemble_config", "status": "running", "message": "组装元数据配置..."})
+    writer({"type": "progress", "step": "组装元数据配置", "status": "running", "message": "组装元数据配置..."})
 
     table_configs = state["table_configs"]
     column_configs = state["column_configs"]
@@ -51,6 +51,6 @@ async def assemble_config(state: MetaAgentState, runtime: Runtime[MetaAgentConte
     }
 
     total_columns = sum(len(t["columns"]) for t in tables)
-    writer({"type": "progress", "step": "assemble_config", "status": "success", "message": f"组装完成: {len(tables)} 表, {total_columns} 字段, {len(metrics)} 指标"})
+    writer({"type": "progress", "step": "组装元数据配置", "status": "success", "message": f"组装完成: {len(tables)} 表, {total_columns} 字段, {len(metrics)} 指标"})
     logger.info(f"assemble_config 完成: {len(tables)} 表, {total_columns} 字段, {len(metrics)} 指标")
     return {"meta_config": meta_config, "error": None}

@@ -7,7 +7,7 @@ from app.core.log import logger
 
 async def analyze_schema(state: MetaAgentState, runtime: Runtime[MetaAgentContext]) -> dict:
     writer = runtime.stream_writer
-    writer({"type": "progress", "step": "analyze_schema", "status": "running", "message": "正在连接数据源..."})
+    writer({"type": "progress", "step": "分析数据库结构", "status": "running", "message": "正在连接数据源..."})
 
     datasource_id = state["datasource_id"]
 
@@ -25,13 +25,13 @@ async def analyze_schema(state: MetaAgentState, runtime: Runtime[MetaAgentContex
         executor = get_executor(config.db_type)
 
         async with datasource_manager.get_session(datasource_id) as session:
-            writer({"type": "progress", "step": "analyze_schema", "status": "running", "message": "获取表列表..."})
+            writer({"type": "progress", "step": "分析数据库结构", "status": "running", "message": "获取表列表..."})
 
             tables = await executor.list_tables(session, datasource.database)
 
             raw_schema = []
             for i, table_name in enumerate(tables):
-                writer({"type": "progress", "step": "analyze_schema", "status": "running", "message": f"分析表 {table_name} ({i+1}/{len(tables)})"})
+                writer({"type": "progress", "step": "分析数据库结构", "status": "running", "message": f"分析表 {table_name} ({i+1}/{len(tables)})"})
 
                 columns_meta = await executor.get_columns(session, table_name, datasource.database)
                 columns = []
@@ -45,10 +45,10 @@ async def analyze_schema(state: MetaAgentState, runtime: Runtime[MetaAgentContex
 
                 raw_schema.append({"name": table_name, "columns": columns})
 
-        writer({"type": "progress", "step": "analyze_schema", "status": "success", "message": f"获取到 {len(raw_schema)} 张表"})
+        writer({"type": "progress", "step": "分析数据库结构", "status": "success", "message": f"获取到 {len(raw_schema)} 张表"})
         logger.info(f"analyze_schema 完成，获取到 {len(raw_schema)} 张表")
         return {"raw_schema": raw_schema, "error": None}
     except Exception as e:
         logger.error(f"analyze_schema 失败: {str(e)}")
-        writer({"type": "progress", "step": "analyze_schema", "status": "error", "message": str(e)})
+        writer({"type": "progress", "step": "分析数据库结构", "status": "error", "message": str(e)})
         return {"error": f"分析 Schema 失败: {str(e)}"}

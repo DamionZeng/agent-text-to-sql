@@ -19,7 +19,7 @@
       <a-space>
         <a-button @click="testConnection" :loading="testing">测试连接</a-button>
         <a-button type="primary" @click="startSync" :loading="syncing">
-          <SyncOutlined /> AI 初始化/同步
+          AI 初始化/同步
         </a-button>
       </a-space>
     </div>

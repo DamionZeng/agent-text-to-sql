@@ -12,7 +12,7 @@ from app.core.log import logger
 async def infer_tables(state: MetaAgentState, runtime: Runtime[MetaAgentContext]) -> dict:
     """AI 为每个表生成描述和确认角色"""
     writer = runtime.stream_writer
-    writer({"type": "progress", "step": "infer_tables", "status": "running", "message": "AI 正在生成表描述..."})
+    writer({"type": "progress", "step": "生成表描述", "status": "running", "message": "AI 正在生成表描述..."})
 
     raw_schema = state["raw_schema"]
     classifications = state["table_classifications"]
@@ -39,12 +39,12 @@ async def infer_tables(state: MetaAgentState, runtime: Runtime[MetaAgentContext]
             content = content.split("```")[1].split("```")[0]
 
         table_configs = json.loads(content.strip())
-        writer({"type": "progress", "step": "infer_tables", "status": "success", "message": f"生成 {len(table_configs)} 张表的描述"})
+        writer({"type": "progress", "step": "生成表描述", "status": "success", "message": f"生成 {len(table_configs)} 张表的描述"})
         logger.info(f"infer_tables 完成: {len(table_configs)} 张表")
         return {"table_configs": table_configs, "error": None, "retry_count": state.get("retry_count", 0) + 1}
     except Exception as e:
         logger.error(f"infer_tables 失败: {str(e)}")
-        writer({"type": "progress", "step": "infer_tables", "status": "error", "message": str(e)})
+        writer({"type": "progress", "step": "生成表描述", "status": "error", "message": str(e)})
         return {
             "table_configs": [
                 {"name": t["name"], "role": classifications.get(t["name"], "dim"), "description": f"{t['name']} 表"}

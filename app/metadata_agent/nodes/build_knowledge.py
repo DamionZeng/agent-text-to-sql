@@ -7,7 +7,7 @@ from app.core.log import logger
 
 async def build_knowledge(state: MetaAgentState, runtime: Runtime[MetaAgentContext]) -> dict:
     writer = runtime.stream_writer
-    writer({"type": "progress", "step": "build_knowledge", "status": "running", "message": "正在同步到知识库..."})
+    writer({"type": "progress", "step": "同步到知识库", "status": "running", "message": "正在同步到知识库..."})
 
     meta_config = state["meta_config"]
     datasource_id = state["datasource_id"]
@@ -45,7 +45,7 @@ async def build_knowledge(state: MetaAgentState, runtime: Runtime[MetaAgentConte
 
         config = MetaConfig(tables=tables, metrics=metrics)
 
-        writer({"type": "progress", "step": "build_knowledge", "status": "running", "message": "写入 MySQL..."})
+        writer({"type": "progress", "step": "同步到知识库", "status": "running", "message": "写入 MySQL..."})
 
         from app.services.meta_knowledge_service import MetaKnowledgeService
         from app.clients.mysql_client_manager import meta_mysql_client_manager
@@ -87,7 +87,7 @@ async def build_knowledge(state: MetaAgentState, runtime: Runtime[MetaAgentConte
 
                 await meta_session.commit()
 
-        writer({"type": "progress", "step": "build_knowledge", "status": "success", "message": "同步完成"})
+        writer({"type": "progress", "step": "同步到知识库", "status": "success", "message": "同步完成"})
         logger.info(f"build_knowledge 完成: {len(tables)} 表, {len(metrics)} 指标")
         return {
             "meta_config": meta_config,
@@ -100,5 +100,5 @@ async def build_knowledge(state: MetaAgentState, runtime: Runtime[MetaAgentConte
         }
     except Exception as e:
         logger.error(f"build_knowledge 失败: {str(e)}")
-        writer({"type": "progress", "step": "build_knowledge", "status": "error", "message": str(e)})
+        writer({"type": "progress", "step": "同步到知识库", "status": "error", "message": str(e)})
         return {"sync_result": None, "error": f"同步失败: {str(e)}"}
