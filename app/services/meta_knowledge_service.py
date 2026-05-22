@@ -179,16 +179,18 @@ class MetaKnowledgeService:
 
         points: list[dict] = []
         for metric_info in metric_infos:
+            payload = asdict(metric_info)
+            payload["metric_id"] = metric_info.id
             points.append({
                 'id': uuid.uuid4(),
                 'embedding_text': metric_info.name,
-                'payload': asdict(metric_info)
+                'payload': payload
             })
             for alia in metric_info.alias:
                 points.append({
                     'id': uuid.uuid4(),
                     'embedding_text': alia,
-                    'payload': asdict(metric_info)
+                    'payload': payload
                 })
         embeddings: list[list[float]] = []
         embedding_texts = [point['embedding_text'] for point in points]
