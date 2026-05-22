@@ -1,8 +1,17 @@
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
+
+_IDENTIFIER_PATTERN = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+
+
+def validate_identifier(name: str) -> str:
+    if not _IDENTIFIER_PATTERN.match(name):
+        raise ValueError(f"Invalid SQL identifier: {name}")
+    return name
 
 
 @dataclass

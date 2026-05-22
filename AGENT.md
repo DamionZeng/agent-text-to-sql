@@ -346,9 +346,43 @@ LLM__BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 
 ## 编码规范
 
-- **分层**: Router → Service → Agent/Repository，Service
+### 分层架构（强制）
+
+严格遵循 **Router → Service → Repository** 三层调用链，禁止跨层调用：
+
+```
+Router (HTTP 层)          → 只做请求解析/响应格式化，不包含业务逻辑
+  │                         - 参数校验由 Pydantic Schema 完成
+  │                         - 业务异常由 Service 抛出 ValueError，Router 统一转 HTTPException
+  │                         - 禁止 Router 直接 import 或注入 Repository
+  ▼
+Service (业务层)          → 编排业务逻辑，可调用多个 Repository/Agent
+  │                         - 所有业务校验在此完成，抛出 ValueError 表示业务异常
+  │                         - 事务边界由 Service 控制
+  │                         - 可调用 Repository、Agent、外部 Client
+  ▼
+Repository (数据访问层)   → 纯数据读写，不包含业务判断
+                              - 每个 Repository 只操作单一数据源（MySQL/Qdrant/ES）
+                              - 返回 Entity 对象，不返回 ORM Model
+                              - 通过 Mapper 完成 Entity ↔ Model 转换
+```
+
+**关键规则**：
+
+| 规则 | 说明 |
+|------|------|
+| Router 禁止直接调用 Repository | 所有数据访问必须通过 Service 层代理 |
+| Router 禁止 import Repository | Router 只能 import Service 和 Schema |
+| Service 抛 ValueError | 业务校验失败统一抛 ValueError，Router catch 后转 HTTPException |
+| Repository 只做 CRUD | 不包含业务判断逻辑，返回 Entity |
+| 依赖注入方向 | Router 依赖 Service，Service 依赖 Repository，通过 FastAPI Depends 注入 |
+
+### 其他规范
+
 - **异步优先**: 所有 I/O 操作使用 async/await
 - **依赖注入**: 通过 FastAPI Depends 管理 Service/Repository 生命周期
+- **标识符安全**: SQL 中表名/列名等标识符必须通过 `validate_identifier()` 校验后再拼接，禁止直接 f-string 拼接用户输入
+- **密码加密**: 数据源密码必须 AES-256-GCM 加密后存储，通过 `app.core.crypto` 模块加解密
 
 ## 应用生命周期
 
@@ -369,17 +403,17 @@ LLM__BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 
 ## 已知待完善项
 
-| 优先级 | 问题 | 位置 |
-|--------|------|------|
-| 🔴 高 | SQL 注入风险 (f-string 拼接表名/列名) | db_executor/mysql_executor.py, postgresql_executor.py, meta_mysql_repository.py |
-| 🔴 高 | 密码明文存储 (注释标注 AES 但未实现) | models/datasource.py, datasource_mapper.py |
-| 🔴 高 | 删除数据源不级联清理 (Qdrant/ES/MySQL/DatasourceManager) | metadata_router.py delete_datasource |
-| 🟡 中 | build_from_config_with_session 临时替换字段非线程安全 | meta_knowledge_service.py |
-| 🟡 中 | 数据源注册分散，应用重启后需首次请求才注册 | 多处 register() 调用 |
-| 🟡 中 | publish 与 build_knowledge 中 JSON→MetaConfig 解析重复 | metadata_router.py, build_knowledge.py |
-| 🟡 中 | build_meta_knowledge.py 传了错误的 dw_session | scripts/build_meta_knowledge.py |
-| 🟢 低 | 缺少 CORS 中间件 | main.py |
-| 🟢 低 | 缺少全局异常处理 | main.py |
-| 🟢 低 | Qdrant 缺少 Payload 索引 | column_qdrant_repository.py, metric_qdrant_repository.py |
-| 🟢 低 | 缺少健康检查接口 | - |
-| 🟢 低 | 列表接口缺少分页 | metadata_router.py |
+| 优先级 | 问题 | 位置 | 状态 |
+|--------|------|------|------|
+| 🔴 高 | SQL 注入风险 (f-string 拼接表名/列名) | db_executor/mysql_executor.py, postgresql_executor.py, meta_mysql_repository.py | ✅ 已修复 |
+| 🔴 高 | 密码明文存储 (注释标注 AES 但未实现) | models/datasource.py, datasource_mapper.py | ✅ 已修复 |
+| 🔴 高 | 删除数据源不级联清理 (Qdrant/ES/MySQL/DatasourceManager) | metadata_router.py delete_datasource | ✅ 已修复 |
+| 🟡 中 | build_from_config_with_session 临时替换字段非线程安全 | meta_knowledge_service.py | |
+| 🟡 中 | 数据源注册分散，应用重启后需首次请求才注册 | 多处 register() 调用 | |
+| 🟡 中 | publish 与 build_knowledge 中 JSON→MetaConfig 解析重复 | metadata_router.py, build_knowledge.py | |
+| 🟡 中 | build_meta_knowledge.py 传了错误的 dw_session | scripts/build_meta_knowledge.py | |
+| 🟢 低 | 缺少 CORS 中间件 | main.py | |
+| 🟢 低 | 缺少全局异常处理 | main.py | |
+| 🟢 低 | Qdrant 缺少 Payload 索引 | column_qdrant_repository.py, metric_qdrant_repository.py | |
+| 🟢 低 | 缺少健康检查接口 | - | |
+| 🟢 低 | 列表接口缺少分页 | metadata_router.py | |

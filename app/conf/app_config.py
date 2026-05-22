@@ -56,6 +56,10 @@ class LLMSettings(BaseModel):
     base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
 
+class CryptoSettings(BaseModel):
+    aes_key: str = ""
+
+
 # Get the project root directory
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -74,6 +78,7 @@ class AppSettings(BaseSettings):
     embedding: EmbeddingSettings = EmbeddingSettings()
     es: ESSettings = ESSettings()
     llm: LLMSettings = LLMSettings()
+    crypto: CryptoSettings = CryptoSettings()
 
 
 # Initialize settings

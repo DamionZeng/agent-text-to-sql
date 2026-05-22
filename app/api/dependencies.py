@@ -46,6 +46,22 @@ async def get_datasource_repository(session: AsyncSession = Depends(get_meta_ses
 async def get_meta_draft_repository(session: AsyncSession = Depends(get_meta_session)):
     return MetaDraftRepository(session)
 
+async def get_meta_knowledge_service(
+    session: AsyncSession = Depends(get_meta_session)
+) -> MetaKnowledgeService:
+    from app.clients.datasource import datasource_manager
+
+    meta_mysql_repository = MetaMysqlRepository(session)
+    return MetaKnowledgeService(
+        meta_mysql_repository=meta_mysql_repository,
+        dw_session=session,
+        datasource_type="mysql",
+        column_qdrant_repository=ColumnQdrantRepository(qdrant_client_manager.client),
+        metric_qdrant_repository=MetricQdrantRepository(qdrant_client_manager.client),
+        value_es_repository=ValueEsRepository(es_client_manager.client),
+        embedding_client=embedding_client_manager.client
+    )
+
 async def get_query_service(
         embedding_client: HuggingFaceEndpointEmbeddings = Depends(get_embedding_client),
         column_qdrant_repository: ColumnQdrantRepository = Depends(get_column_qdrant_repository),
@@ -69,7 +85,9 @@ async def get_metadata_service(
     value_es_repository: ValueEsRepository = Depends(get_value_es_repository),
     metric_qdrant_repository: MetricQdrantRepository = Depends(get_metric_qdrant_repository),
     meta_mysql_repository: MetaMysqlRepository = Depends(get_meta_mysql_repository),
-    datasource_repository: DatasourceRepository = Depends(get_datasource_repository)
+    datasource_repository: DatasourceRepository = Depends(get_datasource_repository),
+    meta_draft_repository: MetaDraftRepository = Depends(get_meta_draft_repository),
+    meta_knowledge_service: MetaKnowledgeService = Depends(get_meta_knowledge_service)
 ) -> MetadataService:
     return MetadataService(
         embedding_client=embedding_client,
@@ -77,21 +95,7 @@ async def get_metadata_service(
         value_es_repository=value_es_repository,
         metric_qdrant_repository=metric_qdrant_repository,
         meta_mysql_repository=meta_mysql_repository,
-        datasource_repository=datasource_repository
-    )
-
-async def get_meta_knowledge_service(
-    session: AsyncSession = Depends(get_meta_session)
-) -> MetaKnowledgeService:
-    from app.clients.datasource import datasource_manager
-
-    meta_mysql_repository = MetaMysqlRepository(session)
-    return MetaKnowledgeService(
-        meta_mysql_repository=meta_mysql_repository,
-        dw_session=session,
-        datasource_type="mysql",
-        column_qdrant_repository=ColumnQdrantRepository(qdrant_client_manager.client),
-        metric_qdrant_repository=MetricQdrantRepository(qdrant_client_manager.client),
-        value_es_repository=ValueEsRepository(es_client_manager.client),
-        embedding_client=embedding_client_manager.client
+        datasource_repository=datasource_repository,
+        meta_draft_repository=meta_draft_repository,
+        meta_knowledge_service=meta_knowledge_service
     )

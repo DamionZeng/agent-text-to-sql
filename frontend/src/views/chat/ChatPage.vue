@@ -36,12 +36,10 @@
           </div>
 
           <!-- 进度步骤 -->
-          <div v-else-if="msg.type === 'steps'" class="steps">
-            <div v-for="(step, sIdx) in msg.steps" :key="sIdx" class="step">
-              <span class="dot" :class="step.status"></span>
-              <span>{{ step.text }}</span>
-            </div>
-          </div>
+          <TaskProgressCard
+            v-else-if="msg.type === 'steps'"
+            :steps="msg.steps"
+          />
 
           <!-- 表格 -->
           <div v-else-if="msg.type === 'table'" class="table-wrap">
@@ -87,6 +85,7 @@
 
 <script setup>
 import { ref, nextTick, onMounted } from 'vue'
+import TaskProgressCard from '../../components/TaskProgressCard.vue'
 
 const question = ref('')
 const messages = ref([

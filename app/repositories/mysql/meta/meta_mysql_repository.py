@@ -1,4 +1,4 @@
-from sqlalchemy import text, delete
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.entities.column_info import ColumnInfo
@@ -73,7 +73,54 @@ class MetaMysqlRepository:
             return None
 
     async def get_key_columns_by_table_id(self, table_id: str) -> list[ColumnInfo]:
-        sql = f"select * from column_info where table_id='{table_id}' and role in ('primary_key', 'foreign_key')"
-        result = await self.session.execute(text(sql))
-        return [ColumnInfo(**dict(row)) for row in result.mappings().fetchall()]
+        stmt = (
+            select(ColumnInfoMySQL)
+            .where(ColumnInfoMySQL.table_id == table_id)
+            .where(ColumnInfoMySQL.role.in_(["primary_key", "foreign_key"]))
+        )
+        result = await self.session.execute(stmt)
+        rows = result.scalars().all()
+        return [ColumnInfoMapper.to_entity(row) for row in rows]
+
+    async def get_table_ids_by_datasource_id(self, datasource_id: str) -> list[str]:
+        stmt = select(TableInfoMySQL.id).where(TableInfoMySQL.datasource_id == datasource_id)
+        result = await self.session.execute(stmt)
+        return [row[0] for row in result.fetchall()]
+
+    async def get_metric_ids_by_table_ids(self, table_ids: list[str]) -> list[str]:
+        if not table_ids:
+            return []
+        stmt = (
+            select(ColumnMetricMySQL.metric_id)
+            .where(ColumnMetricMySQL.column_id.in_(
+                select(ColumnInfoMySQL.id).where(ColumnInfoMySQL.table_id.in_(table_ids))
+            ))
+            .distinct()
+        )
+        result = await self.session.execute(stmt)
+        return [row[0] for row in result.fetchall()]
+
+    async def get_metric_ids_by_datasource_prefix(self, datasource_prefix: str) -> list[str]:
+        stmt = select(MetricInfoMySQL.id).where(MetricInfoMySQL.id.like(f"{datasource_prefix}%"))
+        result = await self.session.execute(stmt)
+        return [row[0] for row in result.fetchall()]
+
+    async def delete_all_by_datasource_id(self, datasource_id: str, datasource_prefix: str) -> tuple[list[str], list[str], list[str]]:
+        table_ids = await self.get_table_ids_by_datasource_id(datasource_id)
+        metric_ids = await self.get_metric_ids_by_datasource_prefix(datasource_prefix)
+
+        column_ids: list[str] = []
+        if table_ids:
+            stmt = select(ColumnInfoMySQL.id).where(ColumnInfoMySQL.table_id.in_(table_ids))
+            result = await self.session.execute(stmt)
+            column_ids = [row[0] for row in result.fetchall()]
+
+        if metric_ids:
+            await self.session.execute(delete(ColumnMetricMySQL).where(ColumnMetricMySQL.metric_id.in_(metric_ids)))
+            await self.session.execute(delete(MetricInfoMySQL).where(MetricInfoMySQL.id.in_(metric_ids)))
+        if table_ids:
+            await self.session.execute(delete(ColumnInfoMySQL).where(ColumnInfoMySQL.table_id.in_(table_ids)))
+            await self.session.execute(delete(TableInfoMySQL).where(TableInfoMySQL.id.in_(table_ids)))
+        await self.session.commit()
+        return table_ids, metric_ids, column_ids
 

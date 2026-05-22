@@ -1,20 +1,12 @@
-import uuid
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
-from app.api.dependencies import get_datasource_repository, get_meta_draft_repository, get_meta_knowledge_service, get_metadata_service
+from app.api.dependencies import get_metadata_service
 from app.api.schemas.datasource_schema import (
     DatasourceCreateSchema, DatasourceUpdateSchema, DatasourceResponseSchema,
     DatasourceTestSchema, DatasourceTestResponseSchema
 )
 from app.api.schemas.meta_draft_schema import MetaDraftSaveSchema, MetaDraftResponseSchema, MetaDraftVersionItemSchema
-from app.entities.datasource import Datasource
-from app.entities.meta_draft import MetaDraft
-from app.repositories.mysql.meta.datasource_repository import DatasourceRepository
-from app.repositories.mysql.meta.meta_draft_repository import MetaDraftRepository
-from app.services.meta_knowledge_service import MetaKnowledgeService
 from app.services.metadata_service import MetadataService
 
 metadata_router = APIRouter(prefix="/api/metadata", tags=["metadata"])
@@ -25,128 +17,79 @@ metadata_router = APIRouter(prefix="/api/metadata", tags=["metadata"])
 @metadata_router.post("/datasources", response_model=DatasourceResponseSchema)
 async def create_datasource(
     schema: DatasourceCreateSchema,
-    repo: DatasourceRepository = Depends(get_datasource_repository)
+    service: MetadataService = Depends(get_metadata_service)
 ):
-    datasource = Datasource(
-        id=str(uuid.uuid4()),
-        name=schema.name,
-        type=schema.type,
-        host=schema.host,
-        port=schema.port,
-        database=schema.database,
-        username=schema.username,
-        password=schema.password,
-        status="inactive",
-        created_at=datetime.now(),
-        updated_at=datetime.now()
+    return await service.create_datasource(
+        name=schema.name, type=schema.type, host=schema.host,
+        port=schema.port, database=schema.database,
+        username=schema.username, password=schema.password
     )
-    return await repo.create(datasource)
 
 
 @metadata_router.get("/datasources", response_model=list[DatasourceResponseSchema])
 async def list_datasources(
-    repo: DatasourceRepository = Depends(get_datasource_repository)
+    service: MetadataService = Depends(get_metadata_service)
 ):
-    return await repo.list_all()
+    return await service.list_datasources()
 
 
 @metadata_router.get("/datasources/{datasource_id}", response_model=DatasourceResponseSchema)
 async def get_datasource(
     datasource_id: str,
-    repo: DatasourceRepository = Depends(get_datasource_repository)
+    service: MetadataService = Depends(get_metadata_service)
 ):
-    ds = await repo.get_by_id(datasource_id)
-    if not ds:
-        raise HTTPException(status_code=404, detail="数据源不存在")
-    return ds
+    try:
+        return await service.get_datasource(datasource_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @metadata_router.put("/datasources/{datasource_id}", response_model=DatasourceResponseSchema)
 async def update_datasource(
     datasource_id: str,
     schema: DatasourceUpdateSchema,
-    repo: DatasourceRepository = Depends(get_datasource_repository)
+    service: MetadataService = Depends(get_metadata_service)
 ):
-    ds = await repo.get_by_id(datasource_id)
-    if not ds:
-        raise HTTPException(status_code=404, detail="数据源不存在")
-
-    if schema.name is not None:
-        ds.name = schema.name
-    if schema.host is not None:
-        ds.host = schema.host
-    if schema.port is not None:
-        ds.port = schema.port
-    if schema.database is not None:
-        ds.database = schema.database
-    if schema.username is not None:
-        ds.username = schema.username
-    if schema.password is not None:
-        ds.password = schema.password
-    ds.updated_at = datetime.now()
-
-    return await repo.update(ds)
+    try:
+        return await service.update_datasource(datasource_id, schema.model_dump(exclude_unset=True))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @metadata_router.delete("/datasources/{datasource_id}")
 async def delete_datasource(
     datasource_id: str,
-    repo: DatasourceRepository = Depends(get_datasource_repository)
+    service: MetadataService = Depends(get_metadata_service)
 ):
-    success = await repo.delete(datasource_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="数据源不存在")
+    try:
+        await service.delete_datasource(datasource_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     return {"message": "删除成功"}
 
 
 @metadata_router.post("/datasources/test", response_model=DatasourceTestResponseSchema)
 async def test_datasource_connection_by_payload(
-    schema: DatasourceTestSchema
+    schema: DatasourceTestSchema,
+    service: MetadataService = Depends(get_metadata_service)
 ):
-    try:
-        from app.clients.datasource import datasource_manager, DatasourceConfigBuilder
-
-        config = DatasourceConfigBuilder() \
-            .datasource_id(f"test_{schema.host}_{schema.port}_{schema.database}") \
-            .db_type(schema.type) \
-            .host(schema.host) \
-            .port(schema.port) \
-            .database(schema.database) \
-            .username(schema.username) \
-            .password(schema.password) \
-            .build()
-
-        success = await datasource_manager.test_connection_by_config(config)
-        return {"success": success, "message": "连接成功" if success else "连接失败"}
-    except Exception as e:
-        return {"success": False, "message": f"连接失败: {str(e)}"}
+    success, message = await service.test_connection_by_payload(
+        type=schema.type, host=schema.host, port=schema.port,
+        database=schema.database, username=schema.username, password=schema.password
+    )
+    return {"success": success, "message": message}
 
 
 @metadata_router.post("/datasources/{datasource_id}/test")
 async def test_datasource_connection(
     datasource_id: str,
-    repo: DatasourceRepository = Depends(get_datasource_repository)
+    service: MetadataService = Depends(get_metadata_service)
 ):
-    ds = await repo.get_by_id(datasource_id)
-    if not ds:
-        raise HTTPException(status_code=404, detail="数据源不存在")
-
     try:
-        from app.clients.datasource import datasource_manager
-
-        success = await datasource_manager.test_connection(ds)
-        if success:
-            ds.status = "active"
-        else:
-            ds.status = "error"
-        ds.updated_at = datetime.now()
-        await repo.update(ds)
-        return {"success": success, "message": "连接成功" if success else "连接失败"}
-    except Exception as e:
-        ds.status = "error"
-        ds.updated_at = datetime.now()
-        await repo.update(ds)
-        return {"success": False, "message": f"连接失败: {str(e)}"}
+        success, message = await service.test_connection(datasource_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"success": success, "message": message}
 
 
 # ========== 元数据草稿 ==========
@@ -154,91 +97,67 @@ async def test_datasource_connection(
 @metadata_router.get("/datasources/{datasource_id}/draft", response_model=MetaDraftResponseSchema)
 async def get_draft(
     datasource_id: str,
-    repo: MetaDraftRepository = Depends(get_meta_draft_repository)
+    service: MetadataService = Depends(get_metadata_service)
 ):
-    draft = await repo.get_latest_by_datasource_id(datasource_id)
-    if not draft:
-        raise HTTPException(status_code=404, detail="草稿不存在")
-    return draft
+    try:
+        return await service.get_draft(datasource_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @metadata_router.get("/datasources/{datasource_id}/draft/versions", response_model=list[MetaDraftVersionItemSchema])
 async def list_draft_versions(
     datasource_id: str,
-    repo: MetaDraftRepository = Depends(get_meta_draft_repository)
+    service: MetadataService = Depends(get_metadata_service)
 ):
-    return await repo.list_by_datasource_id(datasource_id)
+    return await service.list_draft_versions(datasource_id)
 
 
 @metadata_router.get("/datasources/{datasource_id}/draft/versions/{draft_id}", response_model=MetaDraftResponseSchema)
 async def get_draft_version(
     datasource_id: str,
     draft_id: str,
-    repo: MetaDraftRepository = Depends(get_meta_draft_repository)
+    service: MetadataService = Depends(get_metadata_service)
 ):
-    draft = await repo.get_by_id(draft_id)
-    if not draft or draft.datasource_id != datasource_id:
-        raise HTTPException(status_code=404, detail="草稿版本不存在")
-    return draft
+    try:
+        return await service.get_draft_version(datasource_id, draft_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @metadata_router.post("/datasources/{datasource_id}/draft", response_model=MetaDraftResponseSchema)
 async def save_draft(
     datasource_id: str,
     schema: MetaDraftSaveSchema,
-    draft_repo: MetaDraftRepository = Depends(get_meta_draft_repository),
-    ds_repo: DatasourceRepository = Depends(get_datasource_repository)
+    service: MetadataService = Depends(get_metadata_service)
 ):
-    ds = await ds_repo.get_by_id(datasource_id)
-    if not ds:
-        raise HTTPException(status_code=404, detail="数据源不存在")
-
-    next_version = await draft_repo.get_next_version(datasource_id)
-
-    draft = MetaDraft(
-        id=str(uuid.uuid4()),
-        datasource_id=datasource_id,
-        config_json=schema.config_json,
-        version=next_version,
-        status="draft",
-        created_at=datetime.now(),
-        updated_at=datetime.now()
-    )
-    return await draft_repo.create(draft)
+    try:
+        return await service.save_draft(datasource_id, schema.config_json)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @metadata_router.post("/datasources/{datasource_id}/draft/{draft_id}/rollback", response_model=MetaDraftResponseSchema)
 async def rollback_draft(
     datasource_id: str,
     draft_id: str,
-    draft_repo: MetaDraftRepository = Depends(get_meta_draft_repository)
+    service: MetadataService = Depends(get_metadata_service)
 ):
-    source = await draft_repo.get_by_id(draft_id)
-    if not source or source.datasource_id != datasource_id:
-        raise HTTPException(status_code=404, detail="草稿版本不存在")
-
-    next_version = await draft_repo.get_next_version(datasource_id)
-
-    draft = MetaDraft(
-        id=str(uuid.uuid4()),
-        datasource_id=datasource_id,
-        config_json=source.config_json,
-        version=next_version,
-        status="draft",
-        created_at=datetime.now(),
-        updated_at=datetime.now()
-    )
-    return await draft_repo.create(draft)
+    try:
+        return await service.rollback_draft(datasource_id, draft_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @metadata_router.delete("/datasources/{datasource_id}/draft")
 async def delete_draft(
     datasource_id: str,
-    repo: MetaDraftRepository = Depends(get_meta_draft_repository)
+    service: MetadataService = Depends(get_metadata_service)
 ):
-    success = await repo.delete_by_datasource_id(datasource_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="草稿不存在")
+    try:
+        await service.delete_draft(datasource_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     return {"message": "删除成功"}
 
 
@@ -247,83 +166,28 @@ async def delete_draft(
 @metadata_router.post("/datasources/{datasource_id}/publish")
 async def publish_metadata(
     datasource_id: str,
-    draft_repo: MetaDraftRepository = Depends(get_meta_draft_repository),
-    ds_repo: DatasourceRepository = Depends(get_datasource_repository),
-    meta_service: MetaKnowledgeService = Depends(get_meta_knowledge_service)
+    service: MetadataService = Depends(get_metadata_service)
 ):
-    ds = await ds_repo.get_by_id(datasource_id)
-    if not ds:
-        raise HTTPException(status_code=404, detail="数据源不存在")
-
-    draft = await draft_repo.get_by_datasource_id(datasource_id)
-    if not draft:
-        raise HTTPException(status_code=404, detail="草稿不存在，请先保存草稿")
-
     try:
-        from app.conf.meta_config import MetaConfig, TableConfig, ColumnConfig, MetricConfig
-        from app.clients.datasource import datasource_manager
-
-        config_data = draft.config_json
-        tables = []
-        if config_data.get("tables"):
-            for t in config_data["tables"]:
-                columns = []
-                for c in t.get("columns", []):
-                    columns.append(ColumnConfig(
-                        name=c["name"],
-                        role=c.get("role", "dimension"),
-                        description=c.get("description", ""),
-                        alias=c.get("alias", []),
-                        sync=c.get("sync", False)
-                    ))
-                tables.append(TableConfig(
-                    name=t["name"],
-                    role=t.get("role", "dim"),
-                    description=t.get("description", ""),
-                    columns=columns
-                ))
-
-        metrics = []
-        if config_data.get("metrics"):
-            for m in config_data["metrics"]:
-                metrics.append(MetricConfig(
-                    name=m["name"],
-                    description=m.get("description", ""),
-                    relevant_columns=m.get("relevant_columns", []),
-                    alias=m.get("alias", [])
-                ))
-
-        meta_config = MetaConfig(tables=tables, metrics=metrics)
-
-        datasource_manager.register(ds)
-        ds_config = datasource_manager.get_config(datasource_id)
-        datasource_prefix = f"{ds_config.db_type}_{ds.database}_"
-
-        async with datasource_manager.get_session(datasource_id) as dw_session:
-            await meta_service.build_from_config_with_session(meta_config, datasource_prefix, datasource_id, dw_session, ds_config.db_type)
-
-        draft.status = "published"
-        draft.updated_at = datetime.now()
-        await draft_repo.update(draft)
-
-        return {"message": "发布成功"}
+        await service.publish_metadata(datasource_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"发布失败: {str(e)}")
+    return {"message": "发布成功"}
 
-
-# ========== AI 同步 ==========
 
 @metadata_router.post("/datasources/{datasource_id}/sync")
 async def sync_metadata(
     datasource_id: str,
-    ds_repo: DatasourceRepository = Depends(get_datasource_repository),
-    metadata_service: MetadataService = Depends(get_metadata_service)
+    service: MetadataService = Depends(get_metadata_service)
 ):
-    ds = await ds_repo.get_by_id(datasource_id)
-    if not ds:
-        raise HTTPException(status_code=404, detail="数据源不存在")
+    try:
+        await service.get_datasource(datasource_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
     return StreamingResponse(
-        metadata_service.sync(datasource_id),
+        service.sync(datasource_id),
         media_type="text/event-stream"
     )

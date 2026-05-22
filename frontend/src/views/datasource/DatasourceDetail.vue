@@ -25,14 +25,10 @@
     </div>
 
     <!-- 同步状态 -->
-    <a-alert
-      v-if="syncStatus"
-      :message="syncStatus.message"
-      :type="syncStatus.type"
-      show-icon
+    <TaskProgressCard
+      v-if="syncSteps.length > 0"
+      :steps="syncSteps"
       style="margin-bottom: 20px"
-      closable
-      @close="syncStatus = null"
     />
 
     <!-- 元数据编辑器 -->
@@ -280,6 +276,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { SyncOutlined, LeftOutlined, PlusOutlined } from '@ant-design/icons-vue'
+import TaskProgressCard from '../../components/TaskProgressCard.vue'
 
 const route = useRoute()
 const datasourceId = route.params.id
@@ -293,7 +290,7 @@ const syncing = ref(false)
 const saving = ref(false)
 const publishing = ref(false)
 const testing = ref(false)
-const syncStatus = ref(null)
+const syncSteps = ref([])
 
 const versionDrawerVisible = ref(false)
 const versions = ref([])
@@ -412,7 +409,7 @@ const testConnection = async () => {
 
 const startSync = async () => {
   syncing.value = true
-  syncStatus.value = { type: 'info', message: 'AI 同步任务启动中...' }
+  syncSteps.value = []
 
   try {
     const response = await fetch(`/api/metadata/datasources/${datasourceId}/sync`, {
@@ -441,14 +438,20 @@ const startSync = async () => {
         try {
           const data = JSON.parse(line.replace(/^data:\s*/, ''))
           if (data.type === 'progress') {
-            syncStatus.value = { type: 'info', message: `${data.step}: ${data.message}` }
+            let step = syncSteps.value.find((s) => s.text === data.step)
+            if (!step) {
+              step = { text: data.step, status: data.status, message: data.message }
+              syncSteps.value.push(step)
+            } else {
+              step.status = data.status
+              step.message = data.message
+            }
           } else if (data.type === 'result') {
-            syncStatus.value = { type: 'success', message: '同步完成' }
+            syncSteps.value.forEach(s => { s.status = 'done' })
             metaConfig.value = data.data.meta_config
             initAliasStr()
             syncing.value = false
           } else if (data.type === 'error') {
-            syncStatus.value = { type: 'error', message: data.message }
             syncing.value = false
           }
         } catch (e) {
