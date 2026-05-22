@@ -1,23 +1,42 @@
 import uuid
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.routers.query_router import query_router
 from app.api.routers.metadata_router import metadata_router
+from app.api.routers.health_router import health_router
 from app.core.context import request_id_ctx_var
 from app.core.lifespan import lifespan
+from app.core.log import logger
 
 app = FastAPI(lifespan=lifespan)
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(query_router)
 app.include_router(metadata_router)
+app.include_router(health_router)
 
-# 添加中间件，在每个请求中生成唯一的request_id
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"未处理的异常: {type(exc).__name__}: {str(exc)}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "服务器内部错误"}
+    )
+
+
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
-    # 调用路径函数之前
     request_id_ctx_var.set(uuid.uuid4())
-    # 调用路径函数
     response = await call_next(request)
-    # 调用路径函数之后
     return response

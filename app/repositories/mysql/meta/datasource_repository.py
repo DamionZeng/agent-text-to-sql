@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.entities.datasource import Datasource
@@ -23,10 +23,17 @@ class DatasourceRepository:
             return DatasourceMapper.to_entity(result)
         return None
 
-    async def list_all(self) -> list[Datasource]:
-        result = await self.session.execute(select(DatasourceMySQL))
+    async def list_all(self, offset: int = 0, limit: int | None = None) -> list[Datasource]:
+        stmt = select(DatasourceMySQL).offset(offset)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        result = await self.session.execute(stmt)
         rows = result.scalars().all()
         return [DatasourceMapper.to_entity(row) for row in rows]
+
+    async def count_all(self) -> int:
+        result = await self.session.execute(select(func.count()).select_from(DatasourceMySQL))
+        return result.scalar() or 0
 
     async def update(self, datasource: Datasource) -> Datasource:
         model = DatasourceMapper.to_model(datasource)

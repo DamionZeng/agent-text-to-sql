@@ -37,14 +37,24 @@ class MetaDraftRepository:
     async def get_by_datasource_id(self, datasource_id: str) -> MetaDraft | None:
         return await self.get_latest_by_datasource_id(datasource_id)
 
-    async def list_by_datasource_id(self, datasource_id: str) -> list[MetaDraft]:
-        result = await self.session.execute(
+    async def list_by_datasource_id(self, datasource_id: str, offset: int = 0, limit: int | None = None) -> list[MetaDraft]:
+        stmt = (
             select(MetaDraftMySQL)
             .where(MetaDraftMySQL.datasource_id == datasource_id)
             .order_by(MetaDraftMySQL.version.desc())
+            .offset(offset)
         )
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        result = await self.session.execute(stmt)
         rows = result.scalars().all()
         return [MetaDraftMapper.to_entity(row) for row in rows]
+
+    async def count_by_datasource_id(self, datasource_id: str) -> int:
+        result = await self.session.execute(
+            select(func.count()).select_from(MetaDraftMySQL).where(MetaDraftMySQL.datasource_id == datasource_id)
+        )
+        return result.scalar() or 0
 
     async def get_next_version(self, datasource_id: str) -> int:
         result = await self.session.execute(

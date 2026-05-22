@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from app.api.dependencies import get_metadata_service
@@ -26,11 +26,13 @@ async def create_datasource(
     )
 
 
-@metadata_router.get("/datasources", response_model=list[DatasourceResponseSchema])
+@metadata_router.get("/datasources")
 async def list_datasources(
+    page: int | None = Query(default=None, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=100),
     service: MetadataService = Depends(get_metadata_service)
 ):
-    return await service.list_datasources()
+    return await service.list_datasources(page=page, page_size=page_size)
 
 
 @metadata_router.get("/datasources/{datasource_id}", response_model=DatasourceResponseSchema)
@@ -105,12 +107,14 @@ async def get_draft(
         raise HTTPException(status_code=404, detail=str(e))
 
 
-@metadata_router.get("/datasources/{datasource_id}/draft/versions", response_model=list[MetaDraftVersionItemSchema])
+@metadata_router.get("/datasources/{datasource_id}/draft/versions")
 async def list_draft_versions(
     datasource_id: str,
+    page: int | None = Query(default=None, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=100),
     service: MetadataService = Depends(get_metadata_service)
 ):
-    return await service.list_draft_versions(datasource_id)
+    return await service.list_draft_versions(datasource_id, page=page, page_size=page_size)
 
 
 @metadata_router.get("/datasources/{datasource_id}/draft/versions/{draft_id}", response_model=MetaDraftResponseSchema)

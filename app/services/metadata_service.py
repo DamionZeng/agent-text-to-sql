@@ -59,7 +59,12 @@ class MetadataService:
         )
         return await self.datasource_repository.create(datasource)
 
-    async def list_datasources(self):
+    async def list_datasources(self, page: int | None = None, page_size: int | None = None):
+        if page is not None and page_size is not None:
+            offset = (page - 1) * page_size
+            items = await self.datasource_repository.list_all(offset=offset, limit=page_size)
+            total = await self.datasource_repository.count_all()
+            return {"items": items, "total": total, "page": page, "page_size": page_size}
         return await self.datasource_repository.list_all()
 
     async def get_datasource(self, datasource_id: str):
@@ -157,7 +162,12 @@ class MetadataService:
             raise ValueError("草稿不存在")
         return draft
 
-    async def list_draft_versions(self, datasource_id: str):
+    async def list_draft_versions(self, datasource_id: str, page: int | None = None, page_size: int | None = None):
+        if page is not None and page_size is not None:
+            offset = (page - 1) * page_size
+            items = await self.meta_draft_repository.list_by_datasource_id(datasource_id, offset=offset, limit=page_size)
+            total = await self.meta_draft_repository.count_by_datasource_id(datasource_id)
+            return {"items": items, "total": total, "page": page, "page_size": page_size}
         return await self.meta_draft_repository.list_by_datasource_id(datasource_id)
 
     async def get_draft_version(self, datasource_id: str, draft_id: str):

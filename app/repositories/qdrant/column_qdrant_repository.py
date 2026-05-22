@@ -1,6 +1,6 @@
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http.models import PointStruct
-from qdrant_client.models import VectorParams, Distance, Filter, FieldCondition, MatchAny
+from qdrant_client.models import VectorParams, Distance, Filter, FieldCondition, MatchAny, PayloadSchemaType
 from app.conf.app_config import conf
 from app.entities.column_info import ColumnInfo
 
@@ -16,6 +16,11 @@ class ColumnQdrantRepository:
             await self.client.create_collection(
                 collection_name=self.collection_name,
                 vectors_config=VectorParams(size=conf.qdrant.embedding_size, distance=Distance.COSINE),
+            )
+            await self.client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name="table_id",
+                field_schema=PayloadSchemaType.KEYWORD,
             )
 
     async def delete_by_table_ids(self, table_ids: list[str]):
