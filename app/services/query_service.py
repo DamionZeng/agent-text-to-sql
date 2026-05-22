@@ -2,9 +2,9 @@ import json
 
 from langchain_huggingface import HuggingFaceEndpointEmbeddings
 
-from app.agent.context import DataAgentContext
-from app.agent.graph import graph
-from app.agent.state import DataAgentState
+from app.agents.chat_agent.context import DataAgentContext
+from app.agents.chat_agent.graph import graph
+from app.agents.chat_agent.state import DataAgentState
 from app.repositories.es.value_es_respository import ValueEsRepository
 from app.repositories.mysql.meta.datasource_repository import DatasourceRepository
 from app.repositories.mysql.meta.meta_mysql_repository import MetaMysqlRepository

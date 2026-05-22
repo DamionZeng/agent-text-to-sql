@@ -105,6 +105,12 @@ class MetaMysqlRepository:
         result = await self.session.execute(stmt)
         return [row[0] for row in result.fetchall()]
 
+    async def get_metric_by_id(self, metric_id: str) -> MetricInfo | None:
+        model = await self.session.get(MetricInfoMySQL, metric_id)
+        if model:
+            return MetricInfoMapper.to_entity(model)
+        return None
+
     async def delete_all_by_datasource_id(self, datasource_id: str, datasource_prefix: str) -> tuple[list[str], list[str], list[str]]:
         table_ids = await self.get_table_ids_by_datasource_id(datasource_id)
         metric_ids = await self.get_metric_ids_by_datasource_prefix(datasource_prefix)

@@ -50,6 +50,26 @@
               size="small"
               bordered
             />
+            <div class="table-actions">
+              <a-button
+                size="small"
+                type="dashed"
+                :loading="msg.chartGenerating"
+                @click="recommendChartForTable(index)"
+              >
+                📊 一键成图
+              </a-button>
+            </div>
+          </div>
+
+          <!-- 图表 -->
+          <div v-else-if="msg.type === 'chart'" class="chart-wrap">
+            <ChartRenderer
+              :chart-name="msg.chartName"
+              :chart-type="msg.chartType"
+              :echarts-option="msg.echartsOption"
+              :height="msg.height || 400"
+            />
           </div>
 
           <!-- 错误 -->
@@ -65,7 +85,7 @@
       <a-textarea
         v-model:value="question"
         :rows="3"
-        placeholder="请输入您的问题，例如：查询最近7天的订单量"
+        placeholder="请输入您的问题，例如：查询最近7天的订单量。输入 /chart 开头可一句话生成图表"
         :disabled="!selectedDatasource"
         @keydown.enter.prevent="send"
       />
@@ -86,13 +106,14 @@
 <script setup>
 import { ref, nextTick, onMounted } from 'vue'
 import TaskProgressCard from '../../components/TaskProgressCard.vue'
+import ChartRenderer from '../../components/ChartRenderer.vue'
 
 const question = ref('')
 const messages = ref([
   {
     role: 'assistant',
     type: 'text',
-    content: '您好！我是 Agent Text2SQL 智能助手。请先选择数据源，然后向我提问关于数据仓库的任何问题，我会帮您生成 SQL 并执行查询。'
+    content: '您好！我是 Agent Text2SQL 智能助手。请先选择数据源，然后向我提问关于数据仓库的任何问题，我会帮您生成 SQL 并执行查询。\n\n💡 使用 /chart 开头可以一句话生成图表，例如：/chart 做一个最近7天的销售趋势图和品类占比图'
   }
 ])
 const loading = ref(false)
@@ -101,6 +122,10 @@ const datasources = ref([])
 const selectedDatasource = ref(null)
 const messagesEl = ref(null)
 const currentStepsMsg = ref(null)
+
+const isChartCommand = (q) => {
+  return q.trim().startsWith('/chart')
+}
 
 const scrollToBottom = () => {
   nextTick(() => {
@@ -138,11 +163,13 @@ const send = async () => {
   const q = question.value.trim()
   if (!q || loading.value || !selectedDatasource.value) return
 
+  const chartMode = isChartCommand(q)
+  const queryText = chartMode ? q.replace(/^\/chart\s*/, '') : q
+
   messages.value.push({ role: 'user', type: 'text', content: q })
   question.value = ''
   loading.value = true
-  
-  // 添加进度步骤消息
+
   currentStepsMsg.value = {
     role: 'assistant',
     type: 'steps',
@@ -152,10 +179,15 @@ const send = async () => {
   scrollToBottom()
 
   try {
-    const res = await fetch('/api/query', {
+    const endpoint = chartMode ? '/api/viz/charts/generate' : '/api/query'
+    const body = chartMode
+      ? { query: queryText, datasource_id: selectedDatasource.value }
+      : { query: q, datasource_id: selectedDatasource.value }
+
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: q, datasource_id: selectedDatasource.value })
+      body: JSON.stringify(body)
     })
 
     if (!res.ok) {
@@ -179,9 +211,13 @@ const send = async () => {
         if (!line.startsWith('data: ')) continue
         try {
           const data = JSON.parse(line.replace(/^data:\s*/, ''))
-          handleSSEEvent(data)
+          if (chartMode) {
+            handleChartSSEEvent(data)
+          } else {
+            handleSSEEvent(data)
+          }
         } catch (e) {
-          // 忽略无效 JSON
+          // ignore invalid JSON
         }
       }
     }
@@ -217,8 +253,108 @@ const handleSSEEvent = (data) => {
       role: 'assistant',
       type: 'table',
       columns: Object.keys(data.data[0] || {}),
-      rows: data.data
+      rows: data.data,
+      chartGenerating: false,
     })
+  }
+}
+
+const handleChartSSEEvent = (data) => {
+  if (data.type === 'progress') {
+    if (currentStepsMsg.value) {
+      const steps = currentStepsMsg.value.steps
+      let step = steps.find((s) => s.text === data.step)
+
+      if (!step) {
+        step = { text: data.step, status: data.status }
+        steps.push(step)
+      } else {
+        step.status = data.status
+      }
+    }
+  } else if (data.type === 'chart_results' && Array.isArray(data.charts)) {
+    for (const chart of data.charts) {
+      messages.value.push({
+        role: 'assistant',
+        type: 'chart',
+        chartName: chart.chart_name || '图表',
+        chartType: chart.chart_type || 'bar',
+        echartsOption: chart.echarts_option || {},
+        height: 400,
+      })
+    }
+  } else if (data.type === 'chart_plans') {
+    // plans received, will be followed by chart_results
+  } else if (data.type === 'error') {
+    messages.value.push({
+      role: 'assistant',
+      type: 'error',
+      content: data.message || '生成图表失败'
+    })
+  }
+}
+
+const recommendChartForTable = async (msgIndex) => {
+  const msg = messages.value[msgIndex]
+  if (!msg || msg.type !== 'table' || !msg.rows || msg.rows.length === 0) return
+
+  msg.chartGenerating = true
+
+  try {
+    const res = await fetch('/api/viz/charts/recommend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        datasource_id: selectedDatasource.value,
+        sql: '',
+        query_result: msg.rows,
+      })
+    })
+
+    if (!res.ok) {
+      throw new Error('请求失败')
+    }
+
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const events = buffer.split('\n\n')
+      buffer = events.pop() || ''
+
+      for (const evt of events) {
+        const line = evt.trim()
+        if (!line.startsWith('data: ')) continue
+        try {
+          const data = JSON.parse(line.replace(/^data:\s*/, ''))
+          if (data.type === 'chart_result') {
+            messages.value.push({
+              role: 'assistant',
+              type: 'chart',
+              chartName: data.chart_name || '图表',
+              chartType: data.chart_type || 'bar',
+              echartsOption: data.echarts_option || {},
+              height: 400,
+            })
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+  } catch (e) {
+    messages.value.push({
+      role: 'assistant',
+      type: 'error',
+      content: `生成图表失败：${e.message || '未知错误'}`
+    })
+  } finally {
+    msg.chartGenerating = false
   }
 }
 
@@ -342,6 +478,19 @@ onMounted(() => {
 
 .table-wrap {
   overflow-x: auto;
+}
+
+.table-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.chart-wrap {
+  width: 100%;
+  min-width: 400px;
 }
 
 .error-text {

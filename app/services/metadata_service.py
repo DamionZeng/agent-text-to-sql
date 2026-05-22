@@ -4,10 +4,10 @@ from datetime import datetime
 
 from langchain_huggingface import HuggingFaceEndpointEmbeddings
 
-from app.agent.llm import llm
-from app.metadata_agent.context import MetaAgentContext
-from app.metadata_agent.graph import meta_agent_draft
-from app.metadata_agent.state import MetaAgentState
+from app.agents.common_nodes.llm import llm
+from app.agents.metadata_agent.context import MetaAgentContext
+from app.agents.metadata_agent.graph import meta_agent_draft
+from app.agents.metadata_agent.state import MetaAgentState
 from app.repositories.es.value_es_respository import ValueEsRepository
 from app.repositories.mysql.meta.datasource_repository import DatasourceRepository
 from app.repositories.mysql.meta.meta_draft_repository import MetaDraftRepository
