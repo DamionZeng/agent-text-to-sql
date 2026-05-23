@@ -182,7 +182,7 @@
               </template>
               <template #description>
                 <div>{{ item.status === 'draft' ? '草稿' : '已发布' }}</div>
-                <div style="color: #8c8c8c; font-size: 12px">{{ formatTime(item.created_at) }}</div>
+                <div style="color: var(--color-text-tertiary); font-size: 12px">{{ formatTime(item.created_at) }}</div>
               </template>
             </a-list-item-meta>
             <template #actions>
@@ -581,6 +581,9 @@ onMounted(() => {
 <style scoped>
 .datasource-detail {
   width: 100%;
+  max-width: 1300px;
+  margin: 0 auto;
+  padding: 24px;
 }
 
 .page-header {
@@ -589,7 +592,7 @@ onMounted(() => {
   align-items: flex-start;
   margin-bottom: 24px;
   padding-bottom: 20px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .page-title-section {
@@ -599,6 +602,7 @@ onMounted(() => {
 .back-btn {
   padding-left: 0;
   margin-bottom: 8px;
+  color: var(--color-primary);
 }
 
 .title-wrapper {
@@ -610,24 +614,32 @@ onMounted(() => {
 
 .title-wrapper h2 {
   margin: 0;
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 600;
-  color: #1f1f1f;
+  color: var(--color-text-primary);
+  letter-spacing: -0.01em;
 }
 
 .status-tag {
   font-size: 12px;
+  border-radius: 10px;
 }
 
 .connection-desc {
   margin: 0;
-  color: #8c8c8c;
-  font-size: 14px;
-  font-family: monospace;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-family: var(--font-mono);
 }
 
 .editor-card {
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+}
+
+.editor-card :deep(.ant-card-head) {
+  border-bottom: 1px solid var(--color-border-light);
 }
 
 .card-title {
@@ -640,7 +652,7 @@ onMounted(() => {
 .version-badge {
   font-size: 12px;
   font-weight: 400;
-  color: #8c8c8c;
+  color: var(--color-text-tertiary);
   margin-left: 8px;
 }
 
@@ -648,28 +660,31 @@ onMounted(() => {
   margin-bottom: 16px;
 }
 
-.table-list {
-  background: #fafafa;
-  border-radius: 8px;
-  padding: 8px;
+.meta-tabs :deep(.ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn) {
+  color: var(--color-primary);
 }
 
-.table-meta-row {
-  background: #fff;
-  padding: 12px;
-  border-radius: 6px;
-  margin-bottom: 12px;
-}
-
-.section-subtitle {
-  margin: 0 0 12px 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #262626;
+.meta-tabs :deep(.ant-tabs-ink-bar) {
+  background: var(--color-primary);
 }
 
 .empty-card {
-  border-radius: 8px;
-  padding: 60px 0;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+}
+
+.table-edit-section :deep(.ant-table-thead > tr > th) {
+  background: var(--color-bg-page);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.section-subtitle {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
 }
 </style>

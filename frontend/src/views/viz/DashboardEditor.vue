@@ -1,0 +1,570 @@
+<template>
+  <div class="dashboard-editor" :class="{ 'dark-theme': store.dashboard?.theme === 'dark' }">
+    <div class="editor-toolbar">
+      <div class="toolbar-left">
+        <a-button type="text" @click="goBack">
+          <ArrowLeftOutlined /> 返回列表
+        </a-button>
+        <div class="name-display" v-if="!isEditingName" @click="startEditName">
+          <span class="name-text">{{ editorName || '未命名大屏' }}</span>
+          <EditOutlined class="name-edit-icon" />
+        </div>
+        <a-input
+          v-else
+          ref="nameInputRef"
+          v-model:value="editorName"
+          class="name-input"
+          placeholder="大屏名称"
+          bordered="false"
+          @blur="finishEditName"
+          @keydown.enter="finishEditName"
+        />
+      </div>
+      <div class="toolbar-right">
+        <a-space>
+          <a-button @click="handleSave">
+            <SaveOutlined /> 保存
+          </a-button>
+          <a-button @click="goToView">
+            <EyeOutlined /> 预览
+          </a-button>
+          <a-button type="primary" @click="handlePublish" v-if="store.dashboard?.status !== 'published'">
+            <SendOutlined /> 发布
+          </a-button>
+        </a-space>
+      </div>
+    </div>
+
+    <div class="editor-body">
+      <div class="editor-sidebar left-sidebar">
+        <ComponentPalette
+          :panels="store.panels"
+          :selected-panel-id="store.selectedPanelId"
+          @select-panel="store.selectPanel"
+          @remove-panel="handleRemovePanel"
+        />
+      </div>
+
+      <div class="editor-canvas-wrapper">
+        <GlobalFilterBar
+          :filters="store.filters"
+          @filter-change="handleFilterChange"
+        />
+
+        <div
+          class="editor-canvas"
+          @drop.prevent="onDrop"
+          @dragover.prevent
+        >
+          <GridLayout
+            v-if="store.dashboard"
+            v-model:layout="layout"
+            :col-num="12"
+            :row-height="100"
+            :is-draggable="true"
+            :is-resizable="true"
+            :margin="[12, 12]"
+            :vertical-compact="true"
+            :use-css-transforms="true"
+            @layout-updated="onLayoutUpdated"
+          >
+            <GridItem
+              v-for="item in layout"
+              :key="item.i"
+              :x="item.x"
+              :y="item.y"
+              :w="item.w"
+              :h="item.h"
+              :i="item.i"
+              @click="store.selectPanel(item.i)"
+            >
+              <PanelCard
+                :panel="getPanel(item.i)"
+                :selected="store.selectedPanelId === item.i"
+                :chart-data="getChartData(item.i)"
+                @select="store.selectPanel(item.i)"
+                @edit="onEditPanel(item.i)"
+                @delete="handleRemovePanel(item.i)"
+              />
+            </GridItem>
+          </GridLayout>
+
+          <a-empty
+            v-if="store.panels.length === 0"
+            description="拖拽左侧图表组件到此处，或从图表列表添加"
+            style="margin-top: 80px"
+          />
+        </div>
+      </div>
+
+      <div class="editor-sidebar right-sidebar" v-if="store.selectedPanel">
+        <PanelConfigPanel
+          :panel="store.selectedPanel"
+          :chart-data="getChartData(store.selectedPanelId)"
+          :dashboard="store.dashboard"
+          @apply="handleApplyConfig"
+          @execute-sql="handleExecuteSql"
+        />
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, computed, nextTick } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { GridLayout, GridItem } from 'vue-grid-layout-v3'
+import {
+  ArrowLeftOutlined,
+  SaveOutlined,
+  EyeOutlined,
+  SendOutlined,
+  EditOutlined,
+} from '@ant-design/icons-vue'
+import { useVizStore } from '../../stores/viz.js'
+import ComponentPalette from '../../components/viz/ComponentPalette.vue'
+import PanelCard from '../../components/viz/PanelCard.vue'
+import PanelConfigPanel from '../../components/viz/PanelConfigPanel.vue'
+import GlobalFilterBar from '../../components/viz/GlobalFilterBar.vue'
+
+const route = useRoute()
+const router = useRouter()
+const store = useVizStore()
+
+const editorName = ref('')
+const isEditingName = ref(false)
+const nameInputRef = ref(null)
+const chartDataCache = ref({})
+
+const layout = computed({
+  get: () => store.gridLayout,
+  set: (val) => { /* handled by layout-updated */ },
+})
+
+onMounted(async () => {
+  const dashboardId = route.params.id
+  if (dashboardId && dashboardId !== 'new') {
+    const data = await store.loadDashboard(dashboardId)
+    if (data) {
+      editorName.value = data.dashboard?.name || ''
+    }
+  }
+})
+
+function getPanel(id) {
+  return store.panels.find((p) => p.id === id) || {}
+}
+
+function getChartData(panelId) {
+  return chartDataCache.value[panelId] || null
+}
+
+function goBack() {
+  router.push('/viz/dashboards')
+}
+
+function startEditName() {
+  isEditingName.value = true
+  nextTick(() => {
+    if (nameInputRef.value) {
+      nameInputRef.value.focus()
+    }
+  })
+}
+
+function finishEditName() {
+  isEditingName.value = false
+}
+
+function goToView() {
+  if (store.dashboard) {
+    router.push(`/viz/dashboards/${store.dashboard.id}/view`)
+  }
+}
+
+async function handleSave() {
+  try {
+    if (editorName.value) {
+      await store.saveDashboard({ name: editorName.value })
+    }
+    await store.updateLayout(layout.value)
+  } catch (e) {
+    console.error('保存失败', e)
+  }
+}
+
+async function handlePublish() {
+  try {
+    await store.saveDashboard({ status: 'published' })
+  } catch (e) {
+    console.error('发布失败', e)
+  }
+}
+
+async function handleRemovePanel(panelId) {
+  try {
+    await store.removePanel(store.dashboard.id, panelId)
+  } catch (e) {
+    console.error('删除面板失败', e)
+  }
+}
+
+function onLayoutUpdated(newLayout) {
+  store.updateLayout(newLayout)
+}
+
+function onEditPanel(panelId) {
+  store.selectPanel(panelId)
+}
+
+async function handleApplyConfig(formData) {
+  if (!store.selectedPanel) return
+  try {
+    await store.updatePanelConfig(store.selectedPanelId, {
+      title: formData.title,
+      layout_x: formData.layout_x,
+      layout_y: formData.layout_y,
+      layout_w: formData.layout_w,
+      layout_h: formData.layout_h,
+      sort_order: formData.sort_order,
+    })
+  } catch (e) {
+    console.error('应用配置失败', e)
+  }
+}
+
+function handleExecuteSql() {
+  console.log('执行SQL')
+}
+
+function handleFilterChange(filterEvent) {
+  console.log('筛选器变化', filterEvent)
+}
+
+function onDrop(event) {
+  const chartType = event.dataTransfer.getData('chartType')
+  if (chartType && store.dashboard) {
+    store.addPanel(store.dashboard.id, null, `新建${chartType}图表`, {
+      x: 0,
+      y: 0,
+      w: 6,
+      h: 4,
+    })
+  }
+}
+</script>
+
+<style scoped>
+.dashboard-editor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-page);
+  font-family: var(--font-sans);
+}
+
+.dashboard-editor.dark-theme {
+  background: var(--color-sidebar-bg);
+  color: var(--color-text-inverse);
+}
+
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  height: 48px;
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border-light);
+  flex-shrink: 0;
+  z-index: 100;
+  box-shadow: var(--shadow-sm);
+}
+
+.dark-theme .editor-toolbar {
+  background: var(--color-sidebar-hover);
+  border-color: rgba(255, 255, 255, 0.06);
+  color: var(--color-text-inverse);
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.dark-theme .toolbar-left :deep(.ant-btn-text) {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.dark-theme .toolbar-left :deep(.ant-btn-text:hover) {
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.name-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+.name-display:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.dark-theme .name-display:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.name-text {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.dark-theme .name-text {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.name-edit-icon {
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.name-display:hover .name-edit-icon {
+  opacity: 1;
+}
+
+.dark-theme .name-edit-icon {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.dark-theme .name-display:hover .name-edit-icon {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.name-input {
+  width: 300px;
+  font-size: 16px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+}
+
+.dark-theme .name-input :deep(input) {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.dark-theme .name-input :deep(input::placeholder) {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.editor-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.editor-sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  background: var(--color-bg-surface);
+  border-right: 1px solid var(--color-border-light);
+  overflow-y: auto;
+}
+
+.editor-sidebar.right-sidebar {
+  width: 320px;
+  border-right: none;
+  border-left: 1px solid var(--color-border-light);
+}
+
+.dark-theme .editor-sidebar {
+  background: var(--color-sidebar-hover);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.dark-theme .editor-sidebar.right-sidebar {
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.dark-theme .editor-sidebar :deep(.palette-title) {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.dark-theme .editor-sidebar :deep(.palette-item) {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.dark-theme .editor-sidebar :deep(.palette-item:hover) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--color-primary);
+}
+
+.dark-theme .editor-sidebar :deep(.palette-label) {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.dark-theme .editor-sidebar :deep(.palette-icon) {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.dark-theme .editor-sidebar :deep(.layer-item) {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.dark-theme .editor-sidebar :deep(.layer-item:hover) {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.dark-theme .editor-sidebar :deep(.layer-item.active) {
+  background: rgba(79, 70, 229, 0.15);
+  border-color: var(--color-primary);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.dark-theme .editor-sidebar :deep(.layer-icon) {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.dark-theme .editor-sidebar :deep(.layer-name) {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* Right sidebar dark theme */
+.dark-theme .editor-sidebar.right-sidebar :deep(.ant-tabs-nav) {
+  margin-bottom: 8px;
+}
+
+.dark-theme .editor-sidebar.right-sidebar :deep(.ant-tabs-tab) {
+  color: rgba(255, 255, 255, 0.5);
+  padding: 6px 12px;
+}
+
+.dark-theme .editor-sidebar.right-sidebar :deep(.ant-tabs-tab-active) {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.dark-theme .editor-sidebar.right-sidebar :deep(.ant-tabs-ink-bar) {
+  background: var(--color-primary);
+}
+
+.dark-theme .editor-sidebar.right-sidebar :deep(.ant-tabs-nav::before) {
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.dark-theme .editor-sidebar.right-sidebar :deep(.ant-form-item-label > label) {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+}
+
+.dark-theme .editor-sidebar.right-sidebar :deep(.ant-input),
+.dark-theme .editor-sidebar.right-sidebar :deep(.ant-input-number),
+.dark-theme .editor-sidebar.right-sidebar :deep(.ant-select-selector),
+.dark-theme .editor-sidebar.right-sidebar :deep(.ant-input-number-input) {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.dark-theme .editor-sidebar.right-sidebar :deep(.ant-input:focus),
+.dark-theme .editor-sidebar.right-sidebar :deep(.ant-input-number-focused),
+.dark-theme .editor-sidebar.right-sidebar :deep(.ant-select-focused .ant-select-selector) {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2);
+}
+
+.dark-theme .editor-sidebar.right-sidebar :deep(.ant-input::placeholder),
+.dark-theme .editor-sidebar.right-sidebar :deep(.ant-select-selection-placeholder) {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.dark-theme .editor-sidebar.right-sidebar :deep(.ant-select-arrow) {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.dark-theme .editor-sidebar.right-sidebar :deep(.config-footer) {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+.dark-theme .editor-sidebar.right-sidebar :deep(.sql-editor) {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.editor-canvas-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+
+.dark-theme .editor-canvas-wrapper {
+  background: var(--color-sidebar-bg);
+}
+
+.editor-canvas {
+  flex: 1;
+  padding: 16px;
+  min-height: 600px;
+}
+
+.dark-theme .editor-canvas-wrapper :deep(.global-filter-bar) {
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+.dark-theme .editor-canvas-wrapper :deep(.filter-label) {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.dark-theme .editor-canvas-wrapper :deep(.panel-card) {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.dark-theme .editor-canvas-wrapper :deep(.panel-header) {
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+.dark-theme .editor-canvas-wrapper :deep(.panel-title) {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.dark-theme .editor-canvas-wrapper :deep(.empty-text) {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.dark-theme .editor-canvas-wrapper :deep(.empty-icon) {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.dark-theme .editor-canvas-wrapper :deep(.chart-renderer) {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: transparent;
+}
+
+.dark-theme .editor-canvas-wrapper :deep(.chart-header) {
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+.dark-theme .editor-canvas-wrapper :deep(.chart-title) {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.dark-theme .editor-canvas-wrapper :deep(.chart-type-tag) {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.5);
+}
+</style>

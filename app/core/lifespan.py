@@ -14,6 +14,10 @@ from app.models.table_info import TableInfoMySQL
 from app.models.column_info import ColumnInfoMySQL
 from app.models.metric_info import MetricInfoMySQL
 from app.models.column_metric import ColumnMetricMySQL
+from app.models.chart_config import ChartConfigMySQL
+from app.models.dashboard import DashboardMySQL
+from app.models.panel import PanelMySQL
+from app.models.dashboard_filter import DashboardFilterMySQL
 from app.core.log import logger
 from app.clients.datasource import datasource_manager
 from app.repositories.mysql.meta.datasource_repository import DatasourceRepository

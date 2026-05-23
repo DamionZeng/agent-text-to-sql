@@ -1,47 +1,40 @@
 <template>
   <div class="chat-page">
-    <!-- 数据源选择区 -->
-    <div class="datasource-selector">
+    <div class="chat-topbar">
       <a-select
         v-model:value="selectedDatasource"
-        placeholder="请选择数据源"
-        style="width: 100%"
+        placeholder="选择数据源"
+        class="ds-select"
         :loading="loadingDatasources"
         @change="onDatasourceChange"
       >
-        <a-select-option
-          v-for="ds in datasources"
-          :key="ds.id"
-          :value="ds.id"
-        >
-          {{ ds.name }} ({{ ds.type.toUpperCase() }})
+        <a-select-option v-for="ds in datasources" :key="ds.id" :value="ds.id">
+          {{ ds.name }}
         </a-select-option>
       </a-select>
-      <a-tag v-if="selectedDatasource" color="green">已连接</a-tag>
+      <span class="ds-status" :class="{ active: selectedDatasource }"></span>
     </div>
 
-    <!-- 消息区 -->
-    <div ref="messagesEl" class="messages">
+    <div ref="messagesEl" class="chat-body">
       <div
         v-for="(msg, index) in messages"
         :key="index"
-        :class="['message-row', msg.role]"
+        :class="['message-row', msg.role, msg.type]"
       >
-        <div v-if="msg.role === 'assistant'" class="avatar">🤖</div>
+        <div v-if="msg.role === 'assistant'" class="ai-avatar">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+            <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+            <path d="M2 17l10 5 10-5"></path>
+            <path d="M2 12l10 5 10-5"></path>
+          </svg>
+        </div>
 
         <div class="bubble">
-          <!-- 文本 -->
-          <div v-if="msg.type === 'text'" class="text-content">
-            {{ msg.content }}
-          </div>
+          <div v-if="msg.type === 'text'" class="text-content">{{ msg.content }}</div>
 
-          <!-- 进度步骤 -->
-          <TaskProgressCard
-            v-else-if="msg.type === 'steps'"
-            :steps="msg.steps"
-          />
+          <TaskProgressCard v-else-if="msg.type === 'steps'" :steps="msg.steps" />
 
-          <!-- 表格 -->
           <div v-else-if="msg.type === 'table'" class="table-wrap">
             <a-table
               :columns="msg.columns.map(c => ({ title: c, dataIndex: c, key: c }))"
@@ -50,19 +43,13 @@
               size="small"
               bordered
             />
-            <div class="table-actions">
-              <a-button
-                size="small"
-                type="dashed"
-                :loading="msg.chartGenerating"
-                @click="recommendChartForTable(index)"
-              >
-                📊 一键成图
+            <div class="msg-actions">
+              <a-button size="small" type="text" :loading="msg.chartGenerating" @click="recommendChartForTable(index)">
+                一键成图
               </a-button>
             </div>
           </div>
 
-          <!-- 图表 -->
           <div v-else-if="msg.type === 'chart'" class="chart-wrap">
             <ChartRenderer
               :chart-name="msg.chartName"
@@ -70,50 +57,82 @@
               :echarts-option="msg.echartsOption"
               :height="msg.height || 400"
             />
+            <div class="msg-actions">
+              <a-button size="small" type="text" @click="openAddToDashboard(index)">
+                加入大屏
+              </a-button>
+            </div>
           </div>
 
-          <!-- 错误 -->
-          <div v-else-if="msg.type === 'error'" class="error-text">
+          <div v-else-if="msg.type === 'error'" class="error-content">
             <a-alert type="error" :message="msg.content" show-icon />
           </div>
         </div>
       </div>
+
+      <div v-if="loading" class="typing-indicator">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
     </div>
 
-    <!-- 输入区 -->
-    <div class="input-area">
-      <a-textarea
-        v-model:value="question"
-        :rows="3"
-        placeholder="请输入您的问题，例如：查询最近7天的订单量。输入 /chart 开头可一句话生成图表"
-        :disabled="!selectedDatasource"
-        @keydown.enter.prevent="send"
-      />
-      <a-button
-        type="primary"
-        size="large"
-        class="send-btn"
-        :loading="loading"
-        :disabled="!selectedDatasource"
-        @click="send"
-      >
-        发送
-      </a-button>
+    <div class="chat-input-area">
+      <div class="input-wrapper">
+        <a-textarea
+          v-model:value="question"
+          :rows="1"
+          :auto-size="{ minRows: 1, maxRows: 5 }"
+          placeholder="输入问题，例如：查询最近7天的订单量"
+          :disabled="!selectedDatasource"
+          @keydown.enter.exact.prevent="send"
+          class="chat-textarea"
+        />
+        <a-button
+          type="primary"
+          shape="circle"
+          class="send-btn"
+          :loading="loading"
+          :disabled="!selectedDatasource || !question.trim()"
+          @click="send"
+        >
+          <template #icon>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </template>
+        </a-button>
+      </div>
+      <div class="input-hint">
+        输入 <kbd>/chart</kbd> 开头可一句话生成图表
+      </div>
     </div>
+
+    <AddToDashboardModal
+      :open="showAddToDashboard"
+      :dashboards="dashboardList"
+      :loading="addingToDashboard"
+      @update:open="showAddToDashboard = $event"
+      @confirm="handleAddToDashboardConfirm"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, nextTick, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import TaskProgressCard from '../../components/TaskProgressCard.vue'
 import ChartRenderer from '../../components/ChartRenderer.vue'
+import AddToDashboardModal from '../../components/viz/AddToDashboardModal.vue'
 
 const question = ref('')
+const router = useRouter()
 const messages = ref([
   {
     role: 'assistant',
     type: 'text',
-    content: '您好！我是 Agent Text2SQL 智能助手。请先选择数据源，然后向我提问关于数据仓库的任何问题，我会帮您生成 SQL 并执行查询。\n\n💡 使用 /chart 开头可以一句话生成图表，例如：/chart 做一个最近7天的销售趋势图和品类占比图'
+    content: '您好！我是 Agent Text2SQL 智能助手。请选择数据源后开始提问，我会帮您查询分析数据。'
   }
 ])
 const loading = ref(false)
@@ -123,9 +142,12 @@ const selectedDatasource = ref(null)
 const messagesEl = ref(null)
 const currentStepsMsg = ref(null)
 
-const isChartCommand = (q) => {
-  return q.trim().startsWith('/chart')
-}
+const showAddToDashboard = ref(false)
+const addToDashboardMsgIndex = ref(-1)
+const dashboardList = ref([])
+const addingToDashboard = ref(false)
+
+const isChartCommand = (q) => q.trim().startsWith('/chart')
 
 const scrollToBottom = () => {
   nextTick(() => {
@@ -154,8 +176,9 @@ const onDatasourceChange = () => {
     messages.value.push({
       role: 'assistant',
       type: 'text',
-      content: `已选择数据源！现在您可以开始提问了。`
+      content: `已连接数据源，可以开始提问了。`
     })
+    scrollToBottom()
   }
 }
 
@@ -190,9 +213,7 @@ const send = async () => {
       body: JSON.stringify(body)
     })
 
-    if (!res.ok) {
-      throw new Error('请求失败')
-    }
+    if (!res.ok) throw new Error('请求失败')
 
     const reader = res.body.getReader()
     const decoder = new TextDecoder()
@@ -216,12 +237,9 @@ const send = async () => {
           } else {
             handleSSEEvent(data)
           }
-        } catch (e) {
-          // ignore invalid JSON
-        }
+        } catch (e) {}
       }
     }
-
   } catch (e) {
     messages.value.push({
       role: 'assistant',
@@ -240,7 +258,6 @@ const handleSSEEvent = (data) => {
     if (currentStepsMsg.value) {
       const steps = currentStepsMsg.value.steps
       let step = steps.find((s) => s.text === data.step)
-
       if (!step) {
         step = { text: data.step, status: data.status }
         steps.push(step)
@@ -264,7 +281,6 @@ const handleChartSSEEvent = (data) => {
     if (currentStepsMsg.value) {
       const steps = currentStepsMsg.value.steps
       let step = steps.find((s) => s.text === data.step)
-
       if (!step) {
         step = { text: data.step, status: data.status }
         steps.push(step)
@@ -283,8 +299,6 @@ const handleChartSSEEvent = (data) => {
         height: 400,
       })
     }
-  } else if (data.type === 'chart_plans') {
-    // plans received, will be followed by chart_results
   } else if (data.type === 'error') {
     messages.value.push({
       role: 'assistant',
@@ -311,9 +325,7 @@ const recommendChartForTable = async (msgIndex) => {
       })
     })
 
-    if (!res.ok) {
-      throw new Error('请求失败')
-    }
+    if (!res.ok) throw new Error('请求失败')
 
     const reader = res.body.getReader()
     const decoder = new TextDecoder()
@@ -342,9 +354,7 @@ const recommendChartForTable = async (msgIndex) => {
               height: 400,
             })
           }
-        } catch (e) {
-          // ignore
-        }
+        } catch (e) {}
       }
     }
   } catch (e) {
@@ -361,6 +371,64 @@ const recommendChartForTable = async (msgIndex) => {
 onMounted(() => {
   fetchDatasources()
 })
+
+async function openAddToDashboard(msgIndex) {
+  addToDashboardMsgIndex.value = msgIndex
+  addingToDashboard.value = true
+  try {
+    const res = await fetch('/api/viz/dashboards?limit=50')
+    if (res.ok) {
+      const data = await res.json()
+      dashboardList.value = data.items || []
+    }
+  } catch (e) {
+    console.error('获取大屏列表失败', e)
+  } finally {
+    addingToDashboard.value = false
+  }
+  showAddToDashboard.value = true
+}
+
+async function handleAddToDashboardConfirm(result) {
+  const msg = messages.value[addToDashboardMsgIndex.value]
+  if (!msg || msg.type !== 'chart') return
+
+  try {
+    let dashboardId = null
+    let panelTitle = msg.chartName || '查询图表'
+
+    if (result.type === 'existing') {
+      dashboardId = result.dashboardId
+    } else if (result.type === 'new') {
+      const createRes = await fetch('/api/viz/dashboards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: result.name, description: result.description, theme: 'dark' }),
+      })
+      if (createRes.ok) {
+        const created = await createRes.json()
+        dashboardId = created.id
+      }
+    }
+
+    if (dashboardId) {
+      await fetch(`/api/viz/dashboards/${dashboardId}/panels`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: panelTitle,
+          layout_x: 0,
+          layout_y: 0,
+          layout_w: 6,
+          layout_h: 4,
+        }),
+      })
+      router.push(`/viz/dashboards/${dashboardId}/edit`)
+    }
+  } catch (e) {
+    console.error('加入大屏失败', e)
+  }
+}
 </script>
 
 <style scoped>
@@ -368,68 +436,125 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   height: calc(100vh - 112px);
-  max-width: 100%;
+  max-width: 880px;
+  margin: 0 auto;
 }
 
-.datasource-selector {
+/* ---------- Top Bar ---------- */
+.chat-topbar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   padding: 12px 16px;
-  background: #f5f5f5;
-  border-radius: 8px;
-  margin-bottom: 16px;
+  border-bottom: 1px solid var(--color-border-light);
+  flex-shrink: 0;
 }
 
-.messages {
+.ds-select {
+  flex: 1;
+  max-width: 320px;
+}
+
+.ds-select :deep(.ant-select-selector) {
+  border-radius: 20px !important;
+  background: var(--color-bg-page) !important;
+}
+
+.ds-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-text-tertiary);
+  transition: background 0.3s;
+  flex-shrink: 0;
+}
+
+.ds-status.active {
+  background: var(--color-success);
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.4);
+}
+
+/* ---------- Messages ---------- */
+.chat-body {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 8px;
+  padding: 24px 16px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
 }
 
 .message-row {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: 10px;
+  animation: messageIn 0.3s ease-out;
 }
 
 .message-row.user {
   flex-direction: row-reverse;
 }
 
-.avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: #f0f5ff;
+.message-row.user.steps {
+  flex-direction: row;
+}
+
+@keyframes messageIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* AI Avatar */
+.ai-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
+  color: white;
   flex-shrink: 0;
+  box-shadow: var(--shadow-sm);
 }
 
+/* Bubbles */
 .bubble {
-  max-width: 70%;
+  max-width: 75%;
   padding: 12px 16px;
-  border-radius: 12px;
+  border-radius: 16px;
   font-size: 14px;
-  line-height: 1.6;
+  line-height: 1.65;
 }
 
 .message-row.user .bubble {
-  background: #1677ff;
-  color: #fff;
-  border-bottom-right-radius: 4px;
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  border-bottom-right-radius: 6px;
+  box-shadow: var(--shadow-sm);
 }
 
 .message-row.assistant .bubble {
-  background: #f5f5f5;
-  color: #1f1f1f;
-  border-bottom-left-radius: 4px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-light);
+  border-bottom-left-radius: 6px;
+  box-shadow: var(--shadow-sm);
+}
+
+.message-row.assistant.steps .bubble,
+.message-row.assistant.table .bubble,
+.message-row.assistant.chart .bubble,
+.message-row.assistant.error .bubble {
+  max-width: 100%;
+  padding: 16px;
+  border-radius: var(--radius-lg);
 }
 
 .text-content {
@@ -437,79 +562,115 @@ onMounted(() => {
   word-break: break-word;
 }
 
-.steps {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.step {
+/* Typing Indicator */
+.typing-indicator {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
+  gap: 5px;
+  padding: 14px 18px;
+  width: fit-content;
 }
 
-.dot {
-  width: 8px;
-  height: 8px;
+.typing-indicator span {
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  display: inline-block;
+  background: var(--color-primary);
+  animation: typePulse 1.4s infinite ease-in-out;
 }
 
-.dot.pending {
-  background: #d9d9d9;
+.typing-indicator span:nth-child(1) { animation-delay: 0s; }
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typePulse {
+  0%, 60%, 100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
-.dot.running {
-  background: #1677ff;
-  animation: pulse 1.5s infinite;
-}
-
-.dot.done {
-  background: #52c41a;
-}
-
-@keyframes pulse {
-  0% { opacity: 1; }
-  50% { opacity: 0.4; }
-  100% { opacity: 1; }
-}
-
+/* Table & Chart */
 .table-wrap {
   overflow-x: auto;
 }
 
-.table-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #f0f0f0;
-}
-
 .chart-wrap {
   width: 100%;
-  min-width: 400px;
+  min-width: 360px;
 }
 
-.error-text {
-  color: #cf1322;
-}
-
-.input-area {
+.msg-actions {
   display: flex;
-  gap: 12px;
-  padding: 16px 0 0 0;
-  border-top: 1px solid #f0f0f0;
+  justify-content: flex-end;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border-light);
 }
 
-.input-area :deep(.ant-input) {
-  resize: none;
+.error-content {
+  max-width: 100%;
+}
+
+/* ---------- Input Area ---------- */
+.chat-input-area {
+  flex-shrink: 0;
+  padding: 12px 16px 16px;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.input-wrapper {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  background: var(--color-bg-surface);
+  border: 2px solid var(--color-border);
+  border-radius: 20px;
+  padding: 6px 6px 6px 16px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.input-wrapper:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.chat-textarea {
+  flex: 1;
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  font-size: 14px;
+}
+
+.chat-textarea:focus {
+  box-shadow: none !important;
 }
 
 .send-btn {
   flex-shrink: 0;
-  align-self: flex-end;
+  
+}
+
+.input-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  text-align: center;
+}
+
+.input-hint kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+  border-radius: 4px;
+  border: 1px solid var(--color-primary-light);
 }
 </style>

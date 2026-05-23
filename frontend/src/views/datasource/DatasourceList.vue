@@ -246,42 +246,63 @@ onMounted(fetchDatasources)
 <style scoped>
 .datasource-list {
   width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
 }
 
 .page-header {
   display: flex;
-  justify-content: space-between;
   align-items: flex-start;
+  justify-content: space-between;
   margin-bottom: 24px;
 }
 
 .page-title h2 {
-  margin: 0 0 4px 0;
-  font-size: 24px;
+  margin: 0 0 6px;
+  font-size: 22px;
   font-weight: 600;
-  color: #1f1f1f;
+  color: var(--color-text-primary);
+  letter-spacing: -0.01em;
 }
 
 .page-desc {
   margin: 0;
-  color: #8c8c8c;
-  font-size: 14px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .table-card {
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
 }
 
-.datasource-table {
-  padding: 0 16px;
+.table-card :deep(.ant-card-body) {
+  padding: 0;
+}
+
+.datasource-table :deep(.ant-table-thead > tr > th) {
+  background: var(--color-bg-page);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  text-transform: none;
+}
+
+.datasource-table :deep(.ant-table-tbody > tr:hover > td) {
+  background: var(--color-primary-light);
+}
+
+.datasource-table :deep(.ant-table-tbody > tr:last-child > td) {
+  border-bottom: none;
 }
 
 .connection-info {
-  color: #595959;
+  font-family: var(--font-mono);
   font-size: 13px;
-  font-family: monospace;
-  background: #f5f5f5;
-  padding: 2px 8px;
-  border-radius: 4px;
+  color: var(--color-text-secondary);
 }
 </style>

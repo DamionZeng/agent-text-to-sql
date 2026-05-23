@@ -87,10 +87,10 @@ import { computed } from 'vue'
 
 <style scoped>
 .chart-renderer {
-  border: 1px solid #e8e8e8;
-  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   overflow: hidden;
-  background: #fff;
+  background: var(--color-bg-surface);
   margin: 8px 0;
 }
 
@@ -99,22 +99,23 @@ import { computed } from 'vue'
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  border-bottom: 1px solid #f0f0f0;
-  background: #fafafa;
+  border-bottom: 1px solid var(--color-border-light);
+  background: var(--color-bg-page);
 }
 
 .chart-title {
   font-size: 13px;
   font-weight: 500;
-  color: #333;
+  color: var(--color-text-primary);
 }
 
 .chart-type-tag {
   font-size: 11px;
-  color: #888;
-  background: #f0f0f0;
+  color: var(--color-text-tertiary);
+  background: var(--color-bg-page);
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
 }
 
 .chart-container {

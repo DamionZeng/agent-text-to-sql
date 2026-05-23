@@ -87,26 +87,26 @@ const toggle = () => {
 
 <style scoped>
 .task-progress-card {
-  background: #fff;
-  border: 1px solid #f0f0f0;
-  border-radius: 8px;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: all 0.2s ease;
   overflow: hidden;
 }
 
 .task-progress-card:hover {
-  border-color: #d9d9d9;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-sm);
 }
 
 .task-progress-card.finished {
-  background: #f6ffed;
-  border-color: #b7eb8f;
+  background: var(--color-success-light);
+  border-color: var(--color-success-light);
 }
 
 .task-progress-card.finished:hover {
-  border-color: #52c41a;
+  border-color: var(--color-success);
 }
 
 .task-header {
@@ -126,19 +126,19 @@ const toggle = () => {
 }
 
 .task-icon .spin {
-  color: #1677ff;
+  color: var(--color-primary);
   animation: spin 1s linear infinite;
 }
 
 .task-icon .done-icon {
-  color: #52c41a;
+  color: var(--color-success);
   font-size: 18px;
 }
 
 .task-title {
   flex: 1;
   font-size: 13px;
-  color: #262626;
+  color: var(--color-text-primary);
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -147,13 +147,13 @@ const toggle = () => {
 
 .task-arrow {
   font-size: 12px;
-  color: #8c8c8c;
+  color: var(--color-text-tertiary);
   transition: transform 0.2s;
 }
 
 .task-body {
   padding: 0 14px 14px 14px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--color-border-light);
 }
 
 .timeline {
@@ -182,11 +182,11 @@ const toggle = () => {
   top: 22px;
   bottom: 0;
   width: 1px;
-  background: #f0f0f0;
+  background: var(--color-border);
 }
 
 .timeline-item.done:not(:last-child)::before {
-  background: #b7eb8f;
+  background: rgba(5, 150, 105, 0.25);
 }
 
 .timeline-dot {
@@ -201,15 +201,15 @@ const toggle = () => {
 }
 
 .timeline-item.done .timeline-dot {
-  color: #52c41a;
+  color: var(--color-success);
 }
 
 .timeline-item.error .timeline-dot {
-  color: #ff4d4f;
+  color: var(--color-error);
 }
 
 .timeline-item.running .timeline-dot {
-  color: #1677ff;
+  color: var(--color-primary);
 }
 
 .timeline-item.running .timeline-dot .spin {
@@ -217,7 +217,7 @@ const toggle = () => {
 }
 
 .timeline-item.pending .timeline-dot {
-  color: #d9d9d9;
+  color: var(--color-text-tertiary);
 }
 
 .timeline-content {
@@ -227,30 +227,29 @@ const toggle = () => {
 
 .step-name {
   font-size: 13px;
-  color: #262626;
+  color: var(--color-text-primary);
   line-height: 1.5;
 }
 
 .timeline-item.done .step-name {
-  color: #52c41a;
+  color: var(--color-success);
 }
 
 .timeline-item.error .step-name {
-  color: #ff4d4f;
+  color: var(--color-error);
 }
-
 .timeline-item.running .step-name {
-  color: #1677ff;
+  color: var(--color-primary);
   font-weight: 500;
 }
 
 .timeline-item.pending .step-name {
-  color: #8c8c8c;
+  color: var(--color-text-tertiary);
 }
 
 .step-message {
   font-size: 12px;
-  color: #8c8c8c;
+  color: var(--color-text-tertiary);
   margin-top: 2px;
   line-height: 1.4;
 }
