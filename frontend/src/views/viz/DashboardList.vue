@@ -6,7 +6,7 @@
         <p class="page-desc">创建和管理数据可视化大屏，支持拖拽编排、多图表组合</p>
       </div>
       <a-space size="middle">
-        <a-button @click="showAIModal = true">
+        <a-button @click="showAiGenerateModal">
           <RobotOutlined /> AI 创建大屏
         </a-button>
         <a-button type="primary" @click="showCreateModal = true">
@@ -31,7 +31,7 @@
           :key="d.id"
           :dashboard="d"
           @click="goToEditor(d.id)"
-          @edit="goToEditor(d.id)"
+          @edit="handleEdit(d.id)"
           @view="goToView(d.id)"
           @delete="handleDelete(d.id)"
         />
@@ -83,6 +83,22 @@
       :footer="null"
     >
       <a-form layout="vertical">
+        <a-form-item label="选择数据源" required>
+          <a-select
+            v-model:value="aiDatasourceId"
+            placeholder="请选择数据源"
+            :loading="loadingDatasources"
+            style="width: 100%"
+          >
+            <a-select-option
+              v-for="ds in datasources"
+              :key="ds.id"
+              :value="ds.id"
+            >
+              {{ ds.name || ds.host + '/' + ds.database }}
+            </a-select-option>
+          </a-select>
+        </a-form-item>
         <a-form-item label="描述你的大屏需求">
           <a-textarea
             v-model:value="aiPrompt"
@@ -92,10 +108,33 @@
         </a-form-item>
         <div class="modal-footer">
           <a-button @click="showAIModal = false">取消</a-button>
-          <a-button type="primary" @click="handleAICreate" style="margin-left: 8px">
+          <a-button type="primary" @click="handleAICreate" style="margin-left: 8px" :disabled="!aiDatasourceId">
             开始生成
           </a-button>
         </div>
+      </a-form>
+    </a-modal>
+
+    <a-modal
+      v-model:open="showRenameModal"
+      title="编辑大屏信息"
+      @ok="handleRename"
+      :confirmLoading="renaming"
+      width="400px"
+    >
+      <a-form layout="vertical">
+        <a-form-item label="大屏名称" required>
+          <a-input v-model:value="renameForm.name" placeholder="大屏名称" />
+        </a-form-item>
+        <a-form-item label="描述">
+          <a-textarea v-model:value="renameForm.description" placeholder="简要描述（可选）" :rows="2" />
+        </a-form-item>
+        <a-form-item label="主题">
+          <a-radio-group v-model:value="renameForm.theme">
+            <a-radio-button value="dark">深色</a-radio-button>
+            <a-radio-button value="light">浅色</a-radio-button>
+          </a-radio-group>
+        </a-form-item>
       </a-form>
     </a-modal>
   </div>
@@ -109,15 +148,22 @@ import { useDashboard } from '../../composables/viz/useDashboard.js'
 import DashboardCard from '../../components/viz/DashboardCard.vue'
 
 const router = useRouter()
-const { dashboards, total, loading, fetchList, createDashboard, deleteDashboard } = useDashboard()
+const { dashboards, total, loading, fetchList, createDashboard, deleteDashboard, updateDashboard } = useDashboard()
 
 const statusFilter = ref('')
 const currentPage = ref(1)
 const pageSize = ref(12)
 const showCreateModal = ref(false)
 const showAIModal = ref(false)
+const showRenameModal = ref(false)
+const renaming = ref(false)
+const renameForm = ref({ name: '', description: '', theme: 'dark' })
+const renamingId = ref('')
 const creating = ref(false)
 const aiPrompt = ref('')
+const aiDatasourceId = ref('')
+const datasources = ref([])
+const loadingDatasources = ref(false)
 
 const createForm = ref({
   name: '',
@@ -133,6 +179,24 @@ watch(statusFilter, () => {
   currentPage.value = 1
   loadList()
 })
+
+async function loadDatasources() {
+  loadingDatasources.value = true
+  try {
+    const res = await fetch('/api/metadata/datasources')
+    if (res.ok) {
+      const data = await res.json()
+      datasources.value = data.items || data || []
+      if (datasources.value.length > 0) {
+        aiDatasourceId.value = datasources.value[0].id
+      }
+    }
+  } catch (e) {
+    console.error('加载数据源失败', e)
+  } finally {
+    loadingDatasources.value = false
+  }
+}
 
 function loadList() {
   fetchList((currentPage.value - 1) * pageSize.value, pageSize.value, statusFilter.value || null)
@@ -157,8 +221,47 @@ async function handleCreate() {
 }
 
 function handleAICreate() {
+  if (!aiPrompt.value.trim() || !aiDatasourceId.value) return
   showAIModal.value = false
-  router.push({ path: '/viz/dashboards/new', query: { ai: 'true', prompt: aiPrompt.value } })
+  router.push({
+    path: '/viz/dashboards/new/edit',
+    query: { ai: 'true', prompt: aiPrompt.value, datasourceId: aiDatasourceId.value },
+  })
+}
+
+function showAiGenerateModal() {
+  aiPrompt.value = ''
+  aiDatasourceId.value = datasources.value.length > 0 ? datasources.value[0].id : ''
+  loadDatasources()
+  showAIModal.value = true
+}
+
+function handleEdit(id) {
+  const d = dashboards.value.find((item) => item.id === id)
+  if (!d) return
+  renamingId.value = id
+  renameForm.value = {
+    name: d.name || '',
+    description: d.description || '',
+    theme: d.theme || 'dark',
+  }
+  showRenameModal.value = true
+}
+
+async function handleRename() {
+  if (!renameForm.value.name.trim()) return
+  renaming.value = true
+  try {
+    await updateDashboard(renamingId.value, {
+      name: renameForm.value.name.trim(),
+      description: renameForm.value.description.trim(),
+      theme: renameForm.value.theme,
+    })
+    showRenameModal.value = false
+    loadList()
+  } finally {
+    renaming.value = false
+  }
 }
 
 async function handleDelete(id) {

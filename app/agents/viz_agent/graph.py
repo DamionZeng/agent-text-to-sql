@@ -16,6 +16,11 @@ from app.agents.common_nodes.run_sql import run_sql
 from app.agents.viz_agent.context import VizAgentContext
 from app.agents.viz_agent.state import VizAgentState
 from app.agents.viz_agent.nodes.recommend_chart import recommend_chart
+from app.agents.viz_agent.nodes.parse_intent import parse_intent
+from app.agents.viz_agent.nodes.plan_layout import plan_layout
+from app.agents.viz_agent.nodes.generate_sqls_via_chat_agent import generate_sqls_via_chat_agent
+from app.agents.viz_agent.nodes.generate_charts import generate_charts
+from app.agents.viz_agent.nodes.assemble_dashboard import assemble_dashboard
 
 
 def build_recommend_graph():
@@ -78,3 +83,25 @@ def build_generate_graph():
 
 recommend_graph = build_recommend_graph()
 generate_graph = build_generate_graph()
+
+
+def build_dashboard_graph():
+    graph = StateGraph(VizAgentState, context_schema=VizAgentContext)
+
+    graph.add_node("parse_intent", parse_intent)
+    graph.add_node("generate_sqls_via_chat_agent", generate_sqls_via_chat_agent)
+    graph.add_node("generate_charts", generate_charts)
+    graph.add_node("plan_layout", plan_layout)
+    graph.add_node("assemble_dashboard", assemble_dashboard)
+
+    graph.add_edge(START, "parse_intent")
+    graph.add_edge("parse_intent", "generate_sqls_via_chat_agent")
+    graph.add_edge("generate_sqls_via_chat_agent", "generate_charts")
+    graph.add_edge("generate_charts", "plan_layout")
+    graph.add_edge("plan_layout", "assemble_dashboard")
+    graph.add_edge("assemble_dashboard", END)
+
+    return graph.compile()
+
+
+dashboard_graph = build_dashboard_graph()

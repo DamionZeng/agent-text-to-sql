@@ -38,6 +38,16 @@ export function useDashboard() {
     if (!res.ok) throw new Error('删除大屏失败')
   }
 
+  async function updateDashboard(id, data) {
+    const res = await fetch(`${API_BASE}/dashboards/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw new Error('更新大屏失败')
+    return await res.json()
+  }
+
   return {
     dashboards,
     total,
@@ -45,5 +55,6 @@ export function useDashboard() {
     fetchList,
     createDashboard,
     deleteDashboard,
+    updateDashboard,
   }
 }

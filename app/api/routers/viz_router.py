@@ -19,6 +19,7 @@ from app.api.schemas.viz_schema import (
     ChartGenerateRequest,
     DashboardCreateRequest,
     DashboardUpdateRequest,
+    DashboardGenerateRequest,
     DashboardListRequest,
     PanelCreateRequest,
     PanelUpdateRequest,
@@ -155,6 +156,20 @@ async def create_dashboard(
 ):
     result = await viz_service.create_dashboard(body.model_dump(exclude_none=True))
     return result
+
+
+@router.post("/dashboards/generate", summary="AI一句话生成大屏（SSE流式）")
+async def generate_dashboard(
+    body: DashboardGenerateRequest,
+    viz_service: VizService = Depends(get_viz_service),
+):
+    return StreamingResponse(
+        viz_service.generate_dashboard(
+            datasource_id=body.datasource_id,
+            query=body.prompt,
+        ),
+        media_type="text/event-stream",
+    )
 
 
 @router.get("/dashboards", summary="大屏列表")

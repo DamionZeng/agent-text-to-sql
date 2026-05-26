@@ -4,7 +4,7 @@ import uuid
 from langchain_huggingface import HuggingFaceEndpointEmbeddings
 
 from app.agents.viz_agent.context import VizAgentContext
-from app.agents.viz_agent.graph import recommend_graph, generate_graph
+from app.agents.viz_agent.graph import recommend_graph, generate_graph, dashboard_graph
 from app.agents.viz_agent.state import VizAgentState
 from app.entities.dashboard import Dashboard
 from app.entities.dashboard_filter import DashboardFilter
@@ -54,6 +54,8 @@ class VizService:
             column_qdrant_repository=self.column_qdrant_repository,
             value_es_repository=self.value_es_repository,
             metric_qdrant_repository=self.metric_qdrant_repository,
+            dashboard_repository=self.dashboard_repository,
+            panel_repository=self.panel_repository,
         )
 
     async def recommend_chart(self, datasource_id: str, sql: str, query_result: list[dict]):
@@ -92,6 +94,25 @@ class VizService:
         )
         try:
             async for chunk in generate_graph.astream(input=state, context=context, stream_mode="custom"):
+                yield f"data: {json.dumps(chunk, ensure_ascii=False, default=str)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False, default=str)}\n\n"
+
+    async def generate_dashboard(self, datasource_id: str, query: str):
+        from app.clients.datasource import datasource_manager
+
+        if datasource_id and not datasource_manager.is_registered(datasource_id):
+            datasource = await self.datasource_repository.get_by_id(datasource_id)
+            if datasource:
+                datasource_manager.register(datasource)
+
+        context = self._build_context()
+        state = VizAgentState(
+            datasource_id=datasource_id,
+            query=query,
+        )
+        try:
+            async for chunk in dashboard_graph.astream(input=state, context=context, stream_mode="custom"):
                 yield f"data: {json.dumps(chunk, ensure_ascii=False, default=str)}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False, default=str)}\n\n"

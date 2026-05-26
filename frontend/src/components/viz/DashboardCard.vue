@@ -9,12 +9,30 @@
         </svg>
         <span class="placeholder-text">{{ dashboard.theme === 'dark' ? '深色大屏' : '浅色大屏' }}</span>
       </div>
-      <a-tag
-        :color="statusColor"
-        class="card-status"
-      >
-        {{ statusLabel }}
-      </a-tag>
+      <div class="card-top-bar">
+        <a-tag :color="statusColor" class="card-status">
+          {{ statusLabel }}
+        </a-tag>
+        <a-dropdown :trigger="['click']">
+          <a-button class="more-btn" type="text" @click.stop>
+            <template #icon><MoreOutlined /></template>
+          </a-button>
+          <template #overlay>
+            <a-menu @click="handleAction">
+              <a-menu-item key="edit">
+                <EditOutlined /> 编辑信息
+              </a-menu-item>
+              <a-menu-item key="view">
+                <EyeOutlined /> 预览大屏
+              </a-menu-item>
+              <a-menu-divider />
+              <a-menu-item key="delete" danger>
+                <DeleteOutlined /> 删除大屏
+              </a-menu-item>
+            </a-menu>
+          </template>
+        </a-dropdown>
+      </div>
     </div>
     <div class="card-body">
       <div class="card-name">{{ dashboard.name }}</div>
@@ -23,27 +41,6 @@
         <span>{{ dashboard.auto_generated ? 'AI生成' : '手动创建' }}</span>
         <span class="card-date">更新于 {{ formatDate(dashboard.updated_at) }}</span>
       </div>
-    </div>
-    <div class="card-actions" @click.stop>
-      <a-dropdown :trigger="['click']">
-        <a-button type="text" size="small">
-          <MoreOutlined />
-        </a-button>
-        <template #overlay>
-          <a-menu @click="handleAction">
-            <a-menu-item key="edit">
-              <EditOutlined /> 编辑
-            </a-menu-item>
-            <a-menu-item key="view">
-              <EyeOutlined /> 预览
-            </a-menu-item>
-            <a-menu-divider />
-            <a-menu-item key="delete" danger>
-              <DeleteOutlined /> 删除
-            </a-menu-item>
-          </a-menu>
-        </template>
-      </a-dropdown>
     </div>
   </div>
 </template>
@@ -120,10 +117,38 @@ function formatDate(dateStr) {
   color: var(--color-sidebar-text);
 }
 
-.card-status {
+.card-top-bar {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 8px 8px 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.card-status {
+  flex-shrink: 0;
+}
+
+.more-btn {
+  color: rgba(255, 255, 255, 0.7) !important;
+  background: rgba(0, 0, 0, 0.3) !important;
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+  flex-shrink: 0;
+}
+
+.more-btn:hover {
+  color: #fff !important;
+  background: rgba(0, 0, 0, 0.6) !important;
 }
 
 .card-body {

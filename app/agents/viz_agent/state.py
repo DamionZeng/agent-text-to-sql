@@ -67,3 +67,9 @@ class VizAgentState(TypedDict, total=False):
     chart_id: str
     chart_configs: list[dict]
     chart_ids: list[str]
+
+    dashboard_id: str
+    dashboard_name: str
+    dashboard_description: str
+    query_results: list[list[dict]]
+    layout_plan: list[dict]
