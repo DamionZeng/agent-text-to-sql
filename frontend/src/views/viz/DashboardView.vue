@@ -50,6 +50,7 @@
               :chart-type="getChartType(item.i)"
               :echarts-option="getChartOption(item.i)"
               :height="item.h * 100 - 12"
+              :show-header="false"
             />
           </div>
         </GridItem>
@@ -173,11 +174,13 @@ function getPanelTitle(panelId) {
 }
 
 function getChartType(panelId) {
-  return 'bar'
+  const panel = store.panels.find((p) => p.id === panelId)
+  return panel?.chart_type || 'bar'
 }
 
 function getChartOption(panelId) {
-  return {}
+  const panel = store.panels.find((p) => p.id === panelId)
+  return panel?.echarts_option || {}
 }
 </script>
 

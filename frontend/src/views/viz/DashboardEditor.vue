@@ -35,17 +35,60 @@
       </div>
     </div>
 
-    <div class="editor-body">
-      <div class="editor-sidebar left-sidebar" v-if="!aiGenerating">
-        <ComponentPalette
-          :panels="store.panels"
-          :selected-panel-id="store.selectedPanelId"
-          @select-panel="store.selectPanel"
-          @remove-panel="handleRemovePanel"
-        />
+    <div class="editor-body" v-if="!aiGenerating">
+      <!-- Left Mini Dock (collapsed state) -->
+      <div
+        class="left-mini-dock"
+        :class="{ 'docked-expanded': leftDockExpanded }"
+        @mouseenter="leftDockHovered = true"
+        @mouseleave="leftDockHovered = false"
+        v-if="leftSidebarCollapsed"
+      >
+        <div class="mini-dock-icon" @click="toggleLeftSidebar" title="展开组件面板">
+          <AppstoreOutlined />
+        </div>
+        <div class="mini-dock-divider"></div>
+        <div class="mini-dock-icon" @click="handleDockSelectPanel" title="选择图表">
+          <BorderOutlined />
+        </div>
+        <div class="mini-dock-icon" @click="goToView" title="预览">
+          <EyeOutlined />
+        </div>
+        <div class="mini-dock-divider"></div>
+        <div class="mini-dock-bottom">
+          <div class="mini-dock-icon" @click="showRightPanelViaDock" title="显示配置">
+            <SettingOutlined />
+          </div>
+          <div class="mini-dock-icon expand-btn" @click="toggleLeftSidebar" title="展开面板">
+            <RightOutlined />
+          </div>
+        </div>
       </div>
 
-      <div class="editor-canvas-wrapper" v-if="!aiGenerating">
+      <!-- Left Sidebar (full) -->
+      <div
+        class="left-sidebar-panel"
+        :class="{ 'left-hidden': leftSidebarCollapsed }"
+      >
+        <div class="left-sidebar-inner">
+          <ComponentPalette
+            :panels="store.panels"
+            :selected-panel-id="store.selectedPanelId"
+            @select-panel="handleLeftPanelSelect"
+            @remove-panel="handleRemovePanel"
+          />
+        </div>
+        <!-- Bottom toggle arrows -->
+        <div class="sidebar-bottom-toggle">
+          <div class="bottom-toggle-btn" @click="toggleLeftSidebar">
+            <LeftOutlined v-if="!leftSidebarCollapsed" />
+            <RightOutlined v-else />
+          </div>
+        </div>
+      </div>
+
+      <!-- Canvas -->
+      <div class="editor-canvas-wrapper">
         <GlobalFilterBar
           :filters="store.filters"
           @filter-change="handleFilterChange"
@@ -76,13 +119,12 @@
               :w="item.w"
               :h="item.h"
               :i="item.i"
-              @click="store.selectPanel(item.i)"
             >
               <PanelCard
                 :panel="getPanel(item.i)"
                 :selected="store.selectedPanelId === item.i"
                 :chart-data="getChartData(item.i)"
-                @select="store.selectPanel(item.i)"
+                @select="handleCanvasPanelClick(item.i)"
                 @edit="onEditPanel(item.i)"
                 @delete="handleRemovePanel(item.i)"
               />
@@ -97,15 +139,29 @@
         </div>
       </div>
 
-      <div class="editor-sidebar right-sidebar" v-if="store.selectedPanel">
-        <PanelConfigPanel
-          :panel="store.selectedPanel"
-          :chart-data="getChartData(store.selectedPanelId)"
-          :dashboard="store.dashboard"
-          @apply="handleApplyConfig"
-          @execute-sql="handleExecuteSql"
-        />
-      </div>
+      <!-- Right Floating Config Panel -->
+      <Transition name="right-panel">
+        <div
+          class="right-float-panel"
+          v-if="store.selectedPanel && rightPanelVisible"
+        >
+          <div class="right-panel-header">
+            <span class="right-panel-title">{{ store.selectedPanel.title || '图表配置' }}</span>
+            <a-button type="text" size="small" class="right-panel-close" @click="closeRightPanel">
+              <CloseOutlined />
+            </a-button>
+          </div>
+          <div class="right-panel-body">
+            <PanelConfigPanel
+              :panel="store.selectedPanel"
+              :chart-data="getChartData(store.selectedPanelId)"
+              :dashboard="store.dashboard"
+              @apply="handleApplyConfig"
+              @execute-sql="handleExecuteSql"
+            />
+          </div>
+        </div>
+      </Transition>
     </div>
 
     <div class="ai-progress-overlay" v-if="aiGenerating">
@@ -185,6 +241,13 @@ import {
   SendOutlined,
   EditOutlined,
   LoadingOutlined,
+  LeftOutlined,
+  RightOutlined,
+  AppstoreOutlined,
+  BorderOutlined,
+  MenuOutlined,
+  CloseOutlined,
+  SettingOutlined,
 } from '@ant-design/icons-vue'
 import { useVizStore } from '../../stores/viz.js'
 import ComponentPalette from '../../components/viz/ComponentPalette.vue'
@@ -200,6 +263,24 @@ const editorName = ref('')
 const isEditingName = ref(false)
 const nameInputRef = ref(null)
 const chartDataCache = ref({})
+const leftSidebarCollapsed = ref(false)
+const rightSidebarCollapsed = ref(false)
+const rightPanelVisible = ref(true)
+const leftDockHovered = ref(false)
+const leftDockExpanded = ref(false)
+const leftSidebarPanelHovered = ref(false)
+
+function syncChartDataCache() {
+  for (const panel of store.panels) {
+    if (panel.chart_config_id && !chartDataCache.value[panel.id]) {
+      chartDataCache.value[panel.id] = {
+        chart_type: panel.chart_type || 'bar',
+        sql_text: panel.sql_text || '',
+        echarts_option: panel.echarts_option || {},
+      }
+    }
+  }
+}
 
 const aiGenerating = ref(false)
 const aiError = ref('')
@@ -254,9 +335,9 @@ onMounted(async () => {
     if (data) {
       editorName.value = data.dashboard?.name || ''
     }
+    syncChartDataCache()
   }
 })
-
 async function handleAiGenerate(datasourceId, prompt) {
   aiGenerating.value = true
   aiError.value = ''
@@ -348,6 +429,7 @@ async function handleAiGenerate(datasourceId, prompt) {
       if (store.dashboard) {
         editorName.value = store.dashboard.name || editorName.value
       }
+      syncChartDataCache()
     } else if (!aiError.value) {
       aiError.value = '未能生成大屏，请重试'
     }
@@ -369,6 +451,57 @@ function getChartData(panelId) {
 
 function goBack() {
   router.push('/viz/dashboards')
+}
+
+function toggleLeftSidebar() {
+  leftSidebarCollapsed.value = !leftSidebarCollapsed.value
+  leftDockExpanded.value = false
+}
+
+function closeRightPanel() {
+  rightSidebarCollapsed.value = true
+  rightPanelVisible.value = false
+}
+
+function showRightPanel() {
+  rightSidebarCollapsed.value = false
+  rightPanelVisible.value = true
+}
+
+async function handleLeftPanelSelect(panelId) {
+  store.selectPanel(panelId)
+  showRightPanel()
+  await nextTick()
+  if (!rightPanelVisible.value && store.selectedPanel) {
+    rightPanelVisible.value = true
+    rightSidebarCollapsed.value = false
+  }
+}
+
+async function handleCanvasPanelClick(panelId) {
+  store.selectPanel(panelId)
+  showRightPanel()
+  await nextTick()
+  if (!rightPanelVisible.value && store.selectedPanel) {
+    rightPanelVisible.value = true
+    rightSidebarCollapsed.value = false
+  }
+}
+
+function handleDockSelectPanel() {
+  const firstPanel = store.panels[0]
+  if (firstPanel) {
+    store.selectPanel(firstPanel.id)
+    showRightPanel()
+  }
+}
+
+function showRightPanelViaDock() {
+  if (store.selectedPanel) {
+    showRightPanel()
+  } else {
+    handleDockSelectPanel()
+  }
 }
 
 function startEditName() {
@@ -427,6 +560,7 @@ function onEditPanel(panelId) {
 
 async function handleApplyConfig(formData) {
   if (!store.selectedPanel) return
+  const panel = store.selectedPanel
   try {
     await store.updatePanelConfig(store.selectedPanelId, {
       title: formData.title,
@@ -436,6 +570,17 @@ async function handleApplyConfig(formData) {
       layout_h: formData.layout_h,
       sort_order: formData.sort_order,
     })
+    if (panel.chart_config_id) {
+      await store.updateChartConfig(panel.chart_config_id, {
+        chart_type: formData.chartType,
+        sql_text: formData.sql_text,
+      })
+      chartDataCache.value[store.selectedPanelId] = {
+        chart_type: formData.chartType || 'bar',
+        sql_text: formData.sql_text || '',
+        echarts_option: chartDataCache.value[store.selectedPanelId]?.echarts_option || {},
+      }
+    }
   } catch (e) {
     console.error('应用配置失败', e)
   }
@@ -580,133 +725,413 @@ function onDrop(event) {
   flex: 1;
   display: flex;
   overflow: hidden;
+  position: relative;
 }
 
-.editor-sidebar {
+/* ======= Left Mini Dock (collapsed state) ======= */
+.left-mini-dock {
+  position: relative;
+  width: 0;
+  flex-shrink: 0;
+  background: var(--color-bg-surface);
+  border-right: 1px solid var(--color-border-light);
+  overflow: hidden;
+  transition: width 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 8px;
+  gap: 4px;
+  z-index: 20;
+}
+
+.left-mini-dock:hover,
+.left-mini-dock.docked-expanded {
+  width: 48px;
+}
+
+.mini-dock-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-size: 16px;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.mini-dock-icon:hover {
+  background: rgba(79, 70, 229, 0.1);
+  color: var(--color-primary);
+}
+
+.mini-dock-divider {
+  width: 24px;
+  height: 1px;
+  background: var(--color-border-light);
+  margin: 4px 0;
+  flex-shrink: 0;
+}
+
+.mini-dock-spacer {
+  flex: 1;
+}
+
+.mini-dock-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-top: 1px solid var(--color-border-light);
+  margin-top: auto;
+  width: 100%;
+  padding-top: 8px;
+}
+
+.mini-dock-icon.expand-btn {
+  color: var(--color-primary);
+  background: rgba(79, 70, 229, 0.08);
+}
+
+.mini-dock-icon.expand-btn:hover {
+  background: rgba(79, 70, 229, 0.18);
+  color: var(--color-primary);
+}
+
+/* ======= Left Full Sidebar Panel ======= */
+.left-sidebar-panel {
   width: 240px;
   flex-shrink: 0;
   background: var(--color-bg-surface);
   border-right: 1px solid var(--color-border-light);
+  overflow: hidden;
+  transition: width 0.25s ease, opacity 0.25s ease;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  z-index: 10;
+}
+
+.left-sidebar-panel.left-hidden {
+  width: 0;
+  opacity: 0;
+}
+
+.left-sidebar-inner {
+  width: 240px;
+  flex: 1;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.sidebar-bottom-toggle {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 0;
+  border-top: 1px solid var(--color-border-light);
+  background: inherit;
+  z-index: 11;
+}
+
+.bottom-toggle-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.bottom-toggle-btn:hover {
+  background: rgba(79, 70, 229, 0.1);
+  color: var(--color-primary);
+}
+
+/* ======= Right Floating Panel ======= */
+.right-float-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 340px;
+  background: var(--color-bg-surface);
+  border-left: 1px solid var(--color-border-light);
+  display: flex;
+  flex-direction: column;
+  z-index: 50;
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.06);
+  overflow: visible;
+}
+
+.right-panel-enter-active,
+.right-panel-leave-active {
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+
+.right-panel-enter-from,
+.right-panel-leave-to {
+  transform: translateX(100%);
+  opacity: 0;
+}
+
+.right-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-border-light);
+  flex-shrink: 0;
+  min-width: 0;
+  overflow: visible;
+}
+
+.right-panel-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.right-panel-close {
+  color: var(--color-text-secondary) !important;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+  font-size: 14px;
+}
+
+.right-panel-close:hover {
+  background: rgba(79, 70, 229, 0.1) !important;
+  color: var(--color-primary) !important;
+}
+
+.right-panel-body {
+  flex: 1;
   overflow-y: auto;
 }
 
-.editor-sidebar.right-sidebar {
-  width: 320px;
-  border-right: none;
-  border-left: 1px solid var(--color-border-light);
-}
-
-.dark-theme .editor-sidebar {
+/* ======= Dark Theme ======= */
+.dark-theme .left-mini-dock {
   background: var(--color-sidebar-hover);
   border-color: rgba(255, 255, 255, 0.06);
 }
 
-.dark-theme .editor-sidebar.right-sidebar {
+.dark-theme .mini-dock-divider {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.dark-theme .left-sidebar-panel {
+  background: var(--color-sidebar-hover);
   border-color: rgba(255, 255, 255, 0.06);
 }
 
-.dark-theme .editor-sidebar :deep(.palette-title) {
+.dark-theme .left-sidebar-panel.left-hidden {
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.dark-theme .right-float-panel {
+  background: var(--color-sidebar-hover);
+  border-color: rgba(255, 255, 255, 0.06);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.3);
+}
+
+.dark-theme .right-panel-header {
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.dark-theme .right-panel-title {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.dark-theme .bottom-toggle-btn {
   color: rgba(255, 255, 255, 0.5);
 }
 
-.dark-theme .editor-sidebar :deep(.palette-item) {
+.dark-theme .bottom-toggle-btn:hover {
+  background: rgba(79, 70, 229, 0.15);
+  color: #818cf8;
+}
+
+.dark-theme :deep(.palette-title) {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.dark-theme :deep(.palette-item) {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.75);
 }
 
-.dark-theme .editor-sidebar :deep(.palette-item:hover) {
+.dark-theme :deep(.palette-item:hover) {
   background: rgba(255, 255, 255, 0.08);
   border-color: var(--color-primary);
 }
 
-.dark-theme .editor-sidebar :deep(.palette-label) {
+.dark-theme :deep(.palette-label) {
   color: rgba(255, 255, 255, 0.7);
 }
 
-.dark-theme .editor-sidebar :deep(.palette-icon) {
+.dark-theme :deep(.palette-icon) {
   color: rgba(255, 255, 255, 0.6);
 }
 
-.dark-theme .editor-sidebar :deep(.layer-item) {
+.dark-theme :deep(.layer-item) {
   color: rgba(255, 255, 255, 0.65);
 }
 
-.dark-theme .editor-sidebar :deep(.layer-item:hover) {
+.dark-theme :deep(.layer-item:hover) {
   background: rgba(255, 255, 255, 0.06);
 }
 
-.dark-theme .editor-sidebar :deep(.layer-item.active) {
-  background: rgba(79, 70, 229, 0.15);
-  border-color: var(--color-primary);
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.dark-theme .editor-sidebar :deep(.layer-icon) {
-  color: rgba(255, 255, 255, 0.5);
-}
-
-.dark-theme .editor-sidebar :deep(.layer-name) {
-  color: rgba(255, 255, 255, 0.75);
-}
-
-/* Right sidebar dark theme */
-.dark-theme .editor-sidebar.right-sidebar :deep(.ant-tabs-nav) {
+.dark-theme :deep(.ant-tabs-nav) {
   margin-bottom: 8px;
 }
 
-.dark-theme .editor-sidebar.right-sidebar :deep(.ant-tabs-tab) {
+.dark-theme :deep(.ant-tabs-tab) {
   color: rgba(255, 255, 255, 0.5);
   padding: 6px 12px;
 }
 
-.dark-theme .editor-sidebar.right-sidebar :deep(.ant-tabs-tab-active) {
+.dark-theme :deep(.ant-tabs-tab-active) {
   color: rgba(255, 255, 255, 0.9);
 }
 
-.dark-theme .editor-sidebar.right-sidebar :deep(.ant-tabs-ink-bar) {
+.dark-theme :deep(.ant-tabs-ink-bar) {
   background: var(--color-primary);
 }
 
-.dark-theme .editor-sidebar.right-sidebar :deep(.ant-tabs-nav::before) {
+.dark-theme :deep(.ant-tabs-nav::before) {
   border-color: rgba(255, 255, 255, 0.06);
 }
 
-.dark-theme .editor-sidebar.right-sidebar :deep(.ant-form-item-label > label) {
+.dark-theme :deep(.ant-form-item-label > label) {
   color: rgba(255, 255, 255, 0.6);
   font-size: 12px;
 }
 
-.dark-theme .editor-sidebar.right-sidebar :deep(.ant-input),
-.dark-theme .editor-sidebar.right-sidebar :deep(.ant-input-number),
-.dark-theme .editor-sidebar.right-sidebar :deep(.ant-select-selector),
-.dark-theme .editor-sidebar.right-sidebar :deep(.ant-input-number-input) {
+.dark-theme :deep(.ant-input),
+.dark-theme :deep(.ant-input-number),
+.dark-theme :deep(.ant-select-selector),
+.dark-theme :deep(.ant-input-number-input) {
   background: rgba(255, 255, 255, 0.06);
   border-color: rgba(255, 255, 255, 0.1);
   color: rgba(255, 255, 255, 0.85);
 }
 
-.dark-theme .editor-sidebar.right-sidebar :deep(.ant-input:focus),
-.dark-theme .editor-sidebar.right-sidebar :deep(.ant-input-number-focused),
-.dark-theme .editor-sidebar.right-sidebar :deep(.ant-select-focused .ant-select-selector) {
+.dark-theme :deep(.ant-input:focus),
+.dark-theme :deep(.ant-input-number-focused),
+.dark-theme :deep(.ant-select-focused .ant-select-selector) {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2);
 }
 
-.dark-theme .editor-sidebar.right-sidebar :deep(.ant-input::placeholder),
-.dark-theme .editor-sidebar.right-sidebar :deep(.ant-select-selection-placeholder) {
+.dark-theme :deep(.ant-input::placeholder),
+.dark-theme :deep(.ant-select-selection-placeholder) {
   color: rgba(255, 255, 255, 0.3);
 }
 
-.dark-theme .editor-sidebar.right-sidebar :deep(.ant-select-arrow) {
+.dark-theme :deep(.ant-select-arrow) {
   color: rgba(255, 255, 255, 0.4);
 }
 
-.dark-theme .editor-sidebar.right-sidebar :deep(.config-footer) {
+.dark-theme :deep(.sql-editor) {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.dark-theme :deep(.layer-item.active) {
+  background: rgba(79, 70, 229, 0.15);
+  border-color: var(--color-primary);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.dark-theme :deep(.layer-icon) {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.dark-theme :deep(.layer-name) {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* Right panel dark theme */
+.dark-theme .right-float-panel :deep(.ant-tabs-nav) {
+  margin-bottom: 8px;
+}
+
+.dark-theme .right-float-panel :deep(.ant-tabs-tab) {
+  color: rgba(255, 255, 255, 0.5);
+  padding: 6px 12px;
+}
+
+.dark-theme .right-float-panel :deep(.ant-tabs-tab-active) {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.dark-theme .right-float-panel :deep(.ant-tabs-ink-bar) {
+  background: var(--color-primary);
+}
+
+.dark-theme .right-float-panel :deep(.ant-tabs-nav::before) {
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.dark-theme .right-float-panel :deep(.ant-form-item-label > label) {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+}
+
+.dark-theme .right-float-panel :deep(.ant-input),
+.dark-theme .right-float-panel :deep(.ant-input-number),
+.dark-theme .right-float-panel :deep(.ant-select-selector),
+.dark-theme .right-float-panel :deep(.ant-input-number-input) {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.dark-theme .right-float-panel :deep(.ant-input:focus),
+.dark-theme .right-float-panel :deep(.ant-input-number-focused),
+.dark-theme .right-float-panel :deep(.ant-select-focused .ant-select-selector) {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2);
+}
+
+.dark-theme .right-float-panel :deep(.ant-input::placeholder),
+.dark-theme .right-float-panel :deep(.ant-select-selection-placeholder) {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.dark-theme .right-float-panel :deep(.ant-select-arrow) {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.dark-theme .right-float-panel :deep(.config-footer) {
   border-top-color: rgba(255, 255, 255, 0.08);
 }
 
-.dark-theme .editor-sidebar.right-sidebar :deep(.sql-editor) {
+.dark-theme .right-float-panel :deep(.sql-editor) {
   background: rgba(255, 255, 255, 0.04);
 }
 

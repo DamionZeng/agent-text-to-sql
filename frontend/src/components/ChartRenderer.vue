@@ -1,6 +1,6 @@
 <template>
   <div class="chart-renderer">
-    <div class="chart-header">
+    <div class="chart-header" v-if="showHeader">
       <span class="chart-title">{{ chartName }}</span>
       <span class="chart-type-tag">{{ chartTypeLabel }}</span>
     </div>
@@ -9,7 +9,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, nextTick, onBeforeUnmount } from 'vue'
+import { ref, onMounted, watch, nextTick, onBeforeUnmount, computed } from 'vue'
 import * as echarts from 'echarts'
 
 const props = defineProps({
@@ -17,6 +17,7 @@ const props = defineProps({
   chartType: { type: String, default: 'bar' },
   echartsOption: { type: Object, default: () => ({}) },
   height: { type: Number, default: 400 },
+  showHeader: { type: Boolean, default: true },
 })
 
 const chartEl = ref(null)

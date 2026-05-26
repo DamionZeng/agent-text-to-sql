@@ -126,6 +126,18 @@ async def get_chart(
     return chart
 
 
+@router.put("/charts/{chart_id}", summary="更新图表配置")
+async def update_chart(
+    chart_id: str,
+    body: dict,
+    viz_service: VizService = Depends(get_viz_service),
+):
+    chart = await viz_service.update_chart_config(chart_id, body)
+    if not chart:
+        raise HTTPException(status_code=404, detail="图表不存在")
+    return chart
+
+
 @router.get("/charts", summary="列出某数据源下的图表")
 async def list_charts(
     datasource_id: str = Query(..., description="数据源ID"),

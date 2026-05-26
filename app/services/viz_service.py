@@ -120,6 +120,30 @@ class VizService:
     async def get_chart_config(self, chart_id: str):
         return await self.chart_config_repository.get_by_id(chart_id)
 
+    async def update_chart_config(self, chart_id: str, data: dict):
+        chart = await self.chart_config_repository.get_by_id(chart_id)
+        if not chart:
+            return None
+        if "name" in data and data["name"] is not None:
+            chart.name = data["name"]
+        if "chart_type" in data and data["chart_type"] is not None:
+            chart.chart_type = data["chart_type"]
+        if "sql_text" in data and data["sql_text"] is not None:
+            chart.sql_text = data["sql_text"]
+        if "echarts_option" in data and data["echarts_option"] is not None:
+            chart.echarts_option = data["echarts_option"]
+        if "datasource_id" in data and data["datasource_id"] is not None:
+            chart.datasource_id = data["datasource_id"]
+        if "query_params" in data:
+            chart.query_params = data["query_params"]
+        if "width" in data:
+            chart.width = data["width"]
+        if "height" in data:
+            chart.height = data["height"]
+        if "refresh_interval" in data:
+            chart.refresh_interval = data["refresh_interval"]
+        return await self.chart_config_repository.update(chart)
+
     async def list_charts(self, datasource_id: str, offset: int = 0, limit: int = 20):
         return await self.chart_config_repository.list_by_datasource(datasource_id, offset, limit)
 
@@ -148,9 +172,48 @@ class VizService:
             return None
         panels = await self.panel_repository.list_by_dashboard(dashboard_id)
         filters = await self.dashboard_filter_repository.list_by_dashboard(dashboard_id)
+
+        panels_with_charts = []
+        for panel in panels:
+            panel_dict = {
+                "id": panel.id,
+                "dashboard_id": panel.dashboard_id,
+                "chart_config_id": panel.chart_config_id,
+                "title": panel.title,
+                "layout_x": panel.layout_x,
+                "layout_y": panel.layout_y,
+                "layout_w": panel.layout_w,
+                "layout_h": panel.layout_h,
+                "sort_order": panel.sort_order,
+                "created_at": panel.created_at,
+                "updated_at": panel.updated_at,
+            }
+            if panel.chart_config_id:
+                chart_config = await self.chart_config_repository.get_by_id(panel.chart_config_id)
+                if chart_config:
+                    panel_dict["chart_config"] = {
+                        "id": chart_config.id,
+                        "datasource_id": chart_config.datasource_id,
+                        "name": chart_config.name,
+                        "chart_type": chart_config.chart_type,
+                        "sql_text": chart_config.sql_text,
+                        "echarts_option": chart_config.echarts_option,
+                        "auto_generated": chart_config.auto_generated,
+                        "query_params": chart_config.query_params,
+                        "width": chart_config.width,
+                        "height": chart_config.height,
+                        "refresh_interval": chart_config.refresh_interval,
+                        "created_at": chart_config.created_at,
+                        "updated_at": chart_config.updated_at,
+                    }
+                    panel_dict["chart_type"] = chart_config.chart_type
+                    panel_dict["sql_text"] = chart_config.sql_text
+                    panel_dict["echarts_option"] = chart_config.echarts_option
+            panels_with_charts.append(panel_dict)
+
         return {
             "dashboard": dashboard,
-            "panels": panels,
+            "panels": panels_with_charts,
             "filters": filters,
         }
 

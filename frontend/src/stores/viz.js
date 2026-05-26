@@ -121,6 +121,16 @@ export const useVizStore = defineStore('viz', () => {
     panels.value = panels.value.map((p) => (p.id === panelId ? updated : p))
   }
 
+  async function updateChartConfig(chartId, updates) {
+    const res = await fetch(`${API_BASE}/charts/${chartId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    })
+    if (!res.ok) throw new Error('更新图表配置失败')
+    return await res.json()
+  }
+
   async function saveDashboard(updates) {
     const res = await fetch(`${API_BASE}/dashboards/${dashboard.value.id}`, {
       method: 'PUT',
@@ -171,6 +181,7 @@ export const useVizStore = defineStore('viz', () => {
     addPanel,
     removePanel,
     updatePanelConfig,
+    updateChartConfig,
     saveDashboard,
     loadDashboardList,
     createDashboard,

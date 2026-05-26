@@ -33,6 +33,7 @@
           :chart-type="chartData.chart_type || 'bar'"
           :echarts-option="chartData.echarts_option || {}"
           :height="panelHeight - 40"
+          :show-header="false"
         />
       </div>
       <div v-else class="empty-content">
