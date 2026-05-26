@@ -1,10 +1,10 @@
 <template>
-  <div class="chart-renderer">
-    <div class="chart-header" v-if="showHeader">
+  <div class="chart-renderer" :class="{ 'dark-mode': isDarkMode }">
+    <div class="chart-header" v-if="showHeader && chartType !== 'number_card'">
       <span class="chart-title">{{ chartName }}</span>
       <span class="chart-type-tag">{{ chartTypeLabel }}</span>
     </div>
-    <div ref="chartEl" class="chart-container" :style="{ height: height + 'px' }"></div>
+    <div ref="chartEl" class="chart-container"></div>
   </div>
 </template>
 
@@ -16,12 +16,14 @@ const props = defineProps({
   chartName: { type: String, default: '图表' },
   chartType: { type: String, default: 'bar' },
   echartsOption: { type: Object, default: () => ({}) },
-  height: { type: Number, default: 400 },
+  height: { type: Number, default: null },
   showHeader: { type: Boolean, default: true },
+  isDarkMode: { type: Boolean, default: false },
 })
 
 const chartEl = ref(null)
 let chartInstance = null
+let resizeObserver = null
 
 const chartTypeLabelMap = {
   line: '折线图',
@@ -40,6 +42,92 @@ const chartTypeLabelMap = {
 
 const chartTypeLabel = computed(() => chartTypeLabelMap[props.chartType] || props.chartType)
 
+const getDarkThemeOverrides = () => {
+  const textColor = 'rgba(255, 255, 255, 0.85)'
+  const subTextColor = 'rgba(255, 255, 255, 0.55)'
+  const axisLineColor = 'rgba(255, 255, 255, 0.15)'
+  const splitLineColor = 'rgba(255, 255, 255, 0.08)'
+
+  return {
+    textStyle: { color: textColor },
+    title: { textStyle: { color: textColor }, subtextStyle: { color: subTextColor } },
+    legend: { textStyle: { color: textColor }, pageTextStyle: { color: textColor } },
+    tooltip: {
+      backgroundColor: 'rgba(30, 41, 59, 0.95)',
+      borderColor: 'rgba(255, 255, 255, 0.1)',
+      textStyle: { color: textColor },
+    },
+    xAxis: {
+      axisLine: { lineStyle: { color: axisLineColor } },
+      axisTick: { lineStyle: { color: axisLineColor } },
+      axisLabel: { color: subTextColor },
+      splitLine: { lineStyle: { color: splitLineColor } },
+    },
+    yAxis: {
+      axisLine: { lineStyle: { color: axisLineColor } },
+      axisTick: { lineStyle: { color: axisLineColor } },
+      axisLabel: { color: subTextColor },
+      splitLine: { lineStyle: { color: splitLineColor } },
+    },
+    radar: {
+      axisName: { color: subTextColor },
+      splitLine: { lineStyle: { color: splitLineColor } },
+      axisLine: { lineStyle: { color: axisLineColor } },
+    },
+  }
+}
+
+const mergeDarkTheme = (option) => {
+  const darkOverrides = getDarkThemeOverrides()
+  const merged = { ...option, backgroundColor: 'transparent' }
+
+  if (merged.textStyle) {
+    merged.textStyle = { ...darkOverrides.textStyle, ...merged.textStyle }
+  } else {
+    merged.textStyle = darkOverrides.textStyle
+  }
+
+  if (merged.title) {
+    merged.title = { ...darkOverrides.title, ...merged.title }
+    if (option.title?.textStyle) {
+      merged.title.textStyle = { ...darkOverrides.title.textStyle, ...option.title.textStyle }
+    }
+  }
+
+  if (merged.legend) {
+    merged.legend = { ...darkOverrides.legend, ...merged.legend }
+    if (option.legend?.textStyle) {
+      merged.legend.textStyle = { ...darkOverrides.legend.textStyle, ...option.legend.textStyle }
+    }
+  }
+
+  if (merged.tooltip) {
+    merged.tooltip = { ...darkOverrides.tooltip, ...merged.tooltip }
+  }
+
+  if (merged.xAxis) {
+    if (Array.isArray(merged.xAxis)) {
+      merged.xAxis = merged.xAxis.map((ax) => ({ ...darkOverrides.xAxis, ...ax }))
+    } else {
+      merged.xAxis = { ...darkOverrides.xAxis, ...merged.xAxis }
+    }
+  }
+
+  if (merged.yAxis) {
+    if (Array.isArray(merged.yAxis)) {
+      merged.yAxis = merged.yAxis.map((ax) => ({ ...darkOverrides.yAxis, ...ax }))
+    } else {
+      merged.yAxis = { ...darkOverrides.yAxis, ...merged.yAxis }
+    }
+  }
+
+  if (merged.radar) {
+    merged.radar = { ...darkOverrides.radar, ...merged.radar }
+  }
+
+  return merged
+}
+
 const initChart = () => {
   if (!chartEl.value) return
   if (chartInstance) {
@@ -48,7 +136,7 @@ const initChart = () => {
 
   chartInstance = echarts.init(chartEl.value)
 
-  const option = {
+  let option = {
     ...props.echartsOption,
     backgroundColor: 'transparent',
   }
@@ -63,18 +151,48 @@ const initChart = () => {
     }
   }
 
+  if (props.isDarkMode) {
+    option = mergeDarkTheme(option)
+  }
+
   chartInstance.setOption(option, true)
+}
+
+const handleResize = () => {
+  if (chartInstance) {
+    chartInstance.resize()
+  }
 }
 
 watch(() => props.echartsOption, () => {
   nextTick(() => initChart())
 }, { deep: true })
 
-onMounted(() => {
+watch(() => props.chartType, () => {
   nextTick(() => initChart())
 })
 
+watch(() => props.isDarkMode, () => {
+  nextTick(() => initChart())
+})
+
+onMounted(() => {
+  nextTick(() => {
+    initChart()
+    if (chartEl.value && window.ResizeObserver) {
+      resizeObserver = new ResizeObserver(() => {
+        handleResize()
+      })
+      resizeObserver.observe(chartEl.value)
+    }
+  })
+})
+
 onBeforeUnmount(() => {
+  if (resizeObserver && chartEl.value) {
+    resizeObserver.unobserve(chartEl.value)
+    resizeObserver = null
+  }
   if (chartInstance) {
     chartInstance.dispose()
     chartInstance = null
@@ -82,17 +200,16 @@ onBeforeUnmount(() => {
 })
 </script>
 
-<script>
-import { computed } from 'vue'
-</script>
-
 <style scoped>
 .chart-renderer {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--color-bg-surface);
-  margin: 8px 0;
 }
 
 .chart-header {
@@ -102,6 +219,7 @@ import { computed } from 'vue'
   padding: 8px 12px;
   border-bottom: 1px solid var(--color-border-light);
   background: var(--color-bg-page);
+  flex-shrink: 0;
 }
 
 .chart-title {
@@ -120,7 +238,8 @@ import { computed } from 'vue'
 }
 
 .chart-container {
+  flex: 1;
   width: 100%;
-  min-height: 200px;
+  min-height: 0;
 }
 </style>

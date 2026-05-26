@@ -49,8 +49,8 @@
               :chart-name="getPanelTitle(item.i)"
               :chart-type="getChartType(item.i)"
               :echarts-option="getChartOption(item.i)"
-              :height="item.h * 100 - 12"
               :show-header="false"
+              :is-dark-mode="store.dashboard?.theme === 'dark'"
             />
           </div>
         </GridItem>
@@ -103,7 +103,9 @@ const refreshInterval = computed(() => store.dashboard?.refresh_interval || 60)
 const rowHeight = computed(() => {
   if (!canvasRef.value) return 100
   const height = canvasRef.value.clientHeight
-  return Math.max(30, Math.floor((height - 12 * 11) / 6))
+  const margin = 12
+  const rows = 6
+  return Math.max(60, Math.floor((height - margin * (rows - 1)) / rows))
 })
 
 onMounted(async () => {

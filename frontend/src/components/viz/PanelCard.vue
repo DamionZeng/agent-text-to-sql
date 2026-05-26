@@ -32,8 +32,8 @@
           :chart-name="panel.title || '图表'"
           :chart-type="chartData.chart_type || 'bar'"
           :echarts-option="chartData.echarts_option || {}"
-          :height="panelHeight - 40"
           :show-header="false"
+          :is-dark-mode="isDarkMode"
         />
       </div>
       <div v-else class="empty-content">
@@ -59,15 +59,12 @@ const props = defineProps({
   panel: { type: Object, required: true },
   selected: { type: Boolean, default: false },
   chartData: { type: Object, default: null },
+  isDarkMode: { type: Boolean, default: false },
 })
 
 defineEmits(['select', 'edit', 'copy', 'delete'])
 
 const isDragging = ref(false)
-
-const panelHeight = computed(() => {
-  return (props.panel.layout_h || 4) * 104
-})
 </script>
 
 <style scoped>
@@ -114,6 +111,7 @@ const panelHeight = computed(() => {
 .panel-body {
   flex: 1;
   overflow: hidden;
+  min-height: 0;
 }
 
 .chart-content {

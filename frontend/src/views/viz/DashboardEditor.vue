@@ -124,6 +124,7 @@
                 :panel="getPanel(item.i)"
                 :selected="store.selectedPanelId === item.i"
                 :chart-data="getChartData(item.i)"
+                :is-dark-mode="store.dashboard?.theme === 'dark'"
                 @select="handleCanvasPanelClick(item.i)"
                 @edit="onEditPanel(item.i)"
                 @delete="handleRemovePanel(item.i)"
@@ -575,10 +576,14 @@ async function handleApplyConfig(formData) {
         chart_type: formData.chartType,
         sql_text: formData.sql_text,
       })
+      const cached = chartDataCache.value[store.selectedPanelId]
       chartDataCache.value[store.selectedPanelId] = {
         chart_type: formData.chartType || 'bar',
         sql_text: formData.sql_text || '',
-        echarts_option: chartDataCache.value[store.selectedPanelId]?.echarts_option || {},
+        echarts_option: cached?.echarts_option || {},
+      }
+      if (store.selectedPanel) {
+        store.selectedPanel.chart_type = formData.chartType || 'bar'
       }
     }
   } catch (e) {
