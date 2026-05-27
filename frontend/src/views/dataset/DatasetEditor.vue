@@ -13,6 +13,9 @@
           class="dataset-name-input"
           :bordered="false"
         />
+        <a-tag v-if="currentGroupName" color="blue" class="group-tag">
+          <FolderOutlined /> {{ currentGroupName }}
+        </a-tag>
       </div>
       <div class="header-right">
         <a-space>
@@ -221,12 +224,12 @@
                 <div class="join-cards-grid">
                   <div v-for="(link, idx) in tableLinks" :key="'link_cfg_'+idx" class="join-card">
                     <div class="join-card-header">
-                      <div class="table-tag left">{{ getTableNameById(link.from) }}</div>
+                      <div class="table-tag-node left">{{ getTableNameById(link.from) }}</div>
                       <div class="join-connector">
                         <span class="join-type-label">{{ link.type.toUpperCase() }}</span>
                         <div class="connector-line"></div>
                       </div>
-                      <div class="table-tag right">{{ getTableNameById(link.to) }}</div>
+                      <div class="table-tag-node right">{{ getTableNameById(link.to) }}</div>
                     </div>
                     <div class="join-card-content">
                       <a-row :gutter="32">
@@ -269,18 +272,20 @@ import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { 
   LeftOutlined, SearchOutlined, TableOutlined, CodeOutlined, CaretRightOutlined,
-  CloudUploadOutlined, CloseOutlined, CaretDownOutlined, SwapOutlined, ReloadOutlined
+  CloudUploadOutlined, CloseOutlined, CaretDownOutlined, SwapOutlined, ReloadOutlined,
+  FolderOutlined
 } from '@ant-design/icons-vue'
 import { useDataset } from '../../composables/dataset/useDataset'
 
 const router = useRouter()
 const route = useRoute()
-const { fetchDatasources, fetchDatasourceSchema, executeSql, fetchTableMetadata, createDataset, updateDataset, fetchDataset } = useDataset()
+const { fetchDatasources, fetchDatasourceSchema, executeSql, fetchTableMetadata, createDataset, updateDataset, fetchDataset, fetchGroups } = useDataset()
 
 const canvasRef = ref(null)
 const saving = ref(false)
 const runningSql = ref(false)
 const datasources = ref([])
+const groups = ref([])
 const schemaTables = ref([])
 const tableSearch = ref('')
 const activeBottomTab = ref('metadata')
@@ -295,10 +300,17 @@ const formData = reactive({
   name: '',
   description: '',
   datasource_id: undefined,
+  group_id: route.query.group_id || undefined,
   type: 'db_table',
   info: { table_name: undefined, sql: '', canvasTables: [], tableLinks: [] },
   fields: [],
   status: 'active'
+})
+
+const currentGroupName = computed(() => {
+  if (!formData.group_id) return null
+  const group = groups.value.find(g => g.id === formData.group_id)
+  return group ? group.name : null
 })
 
 const filteredTables = computed(() => {
@@ -327,11 +339,18 @@ const metaColumns = [
 
 onMounted(async () => {
   try {
-    datasources.value = await fetchDatasources()
+    const [dsData, groupData] = await Promise.all([
+      fetchDatasources(),
+      fetchGroups()
+    ])
+    datasources.value = dsData
+    groups.value = groupData
+
     if (route.params.id) {
       const data = await fetchDataset(route.params.id)
       formData.name = data.name
       formData.datasource_id = data.datasource_id
+      formData.group_id = data.group_id
       formData.type = data.type
       formData.description = data.description
       formData.fields = data.fields || []
@@ -729,9 +748,10 @@ const handleSave = async () => {
   height: 48px; background: #fff; border-bottom: 1px solid #d9d9d9;
   display: flex; align-items: center; justify-content: space-between; padding: 0 16px; flex-shrink: 0;
 }
-.header-left { display: flex; align-items: center; flex: 1; }
-.divider { margin: 0 12px; color: #d9d9d9; }
+.header-left { display: flex; align-items: center; flex: 1; gap: 8px; }
+.divider { margin: 0 4px; color: #d9d9d9; }
 .dataset-name-input { font-size: 16px; font-weight: 500; width: 300px; }
+.group-tag { margin-left: 8px; }
 
 .editor-main { flex: 1; display: flex; overflow: hidden; }
 
@@ -836,7 +856,7 @@ const handleSave = async () => {
   padding: 16px 24px; background: #f8fafc; border-bottom: 1px solid #f1f5f9;
   display: flex; align-items: center; justify-content: center; gap: 24px;
 }
-.table-tag {
+.table-tag-node {
   background: #fff; border: 1px solid #e2e8f0; padding: 6px 20px; border-radius: 20px;
   font-weight: 600; font-size: 13px; color: #334155; box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
