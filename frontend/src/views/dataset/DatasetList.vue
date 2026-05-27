@@ -36,6 +36,11 @@
               <a-button type="primary" ghost size="small" @click="goToEdit(record.id)">
                 编辑
               </a-button>
+              <a-popconfirm title="确定要删除该数据集吗？" @confirm="handleDelete(record.id)">
+                <a-button type="link" danger size="small">
+                  删除
+                </a-button>
+              </a-popconfirm>
             </a-space>
           </template>
         </template>
@@ -51,7 +56,7 @@ import { PlusOutlined } from '@ant-design/icons-vue'
 import { useDataset } from '../../composables/dataset/useDataset'
 
 const router = useRouter()
-const { datasets, loading, fetchList } = useDataset()
+const { datasets, loading, fetchList, deleteDataset } = useDataset()
 
 const columns = [
   { title: '数据集名称', dataIndex: 'name', key: 'name' },
@@ -70,7 +75,16 @@ const goToCreate = () => {
 }
 
 const goToEdit = (id) => {
-  // To be implemented
+  router.push(`/dataset/edit/${id}`)
+}
+
+const handleDelete = async (id) => {
+  try {
+    await deleteDataset(id)
+    await fetchList()
+  } catch (e) {
+    console.error(e)
+  }
 }
 </script>
 

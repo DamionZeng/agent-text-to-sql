@@ -36,19 +36,21 @@ class DatasetBase(BaseModel):
     name: str = Field(..., description="Dataset Name")
     datasource_id: str = Field(..., description="DataSource ID")
     type: str = Field("db_table", description="db_table, custom_sql")
-    info: Optional[dict] = Field(None, description="JSON storing table_name or sql_text")
+    info: Optional[Any] = Field(None, description="JSON storing table_name, sql_text, layout, etc.")
     description: Optional[str] = Field(None, description="Description")
     status: str = Field("active", description="active, inactive")
 
 class DatasetCreate(DatasetBase):
-    fields: Optional[List[DatasetFieldCreate]] = None
+    fields: Optional[List[Any]] = None
 
 class DatasetUpdate(BaseModel):
     name: Optional[str] = None
-    info: Optional[dict] = None
+    datasource_id: Optional[str] = None
+    type: Optional[str] = None
+    info: Optional[Any] = None
     description: Optional[str] = None
     status: Optional[str] = None
-    fields: Optional[List[DatasetFieldCreate]] = None # Overwrite or update fields
+    fields: Optional[List[Any]] = None
 
 class DatasetResponse(DatasetBase):
     id: str

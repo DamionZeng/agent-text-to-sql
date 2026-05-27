@@ -83,6 +83,36 @@ body {
   height: 100vh;
 }
 
+/* Custom Scrollbar Styles */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+  transition: background 0.3s;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Global Transition for Interactive Elements */
+a, button, .ant-btn, .ant-menu-item, .ant-select, .ant-input {
+  transition: all var(--transition-normal) !important;
+}
+
+/* Ant Design Override for Rounded Corners */
+.ant-btn { border-radius: var(--radius-sm); }
+.ant-input, .ant-select-selector { border-radius: var(--radius-sm) !important; }
+.ant-card { border-radius: var(--radius-md) !important; box-shadow: var(--shadow-sm); }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

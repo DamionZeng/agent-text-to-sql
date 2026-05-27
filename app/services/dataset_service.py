@@ -2,7 +2,7 @@ import uuid
 from app.entities.dataset import Dataset
 from app.entities.dataset_field import DatasetField
 from app.repositories.mysql.meta.dataset_repository import DatasetRepository
-from app.api.schemas.dataset_schema import DatasetCreate
+from app.api.schemas.dataset_schema import DatasetCreate, DatasetUpdate
 
 class DatasetService:
     def __init__(self, repository: DatasetRepository):
@@ -20,23 +20,25 @@ class DatasetService:
             status=schema.status
         )
         await self.repository.create(ds)
-        
-        if schema.fields:
-            for f in schema.fields:
-                f_entity = DatasetField(
-                    id=str(uuid.uuid4()),
-                    dataset_id=ds_id,
-                    origin_name=f.origin_name,
-                    name=f.name,
-                    data_type=f.data_type,
-                    role=f.role,
-                    ext_field=f.ext_field,
-                    expression=f.expression,
-                    checked=f.checked,
-                    sort_order=f.sort_order
-                )
-                await self.repository.create_field(f_entity)
         return ds
+
+    async def update_dataset(self, dataset_id: str, schema: DatasetUpdate) -> Dataset:
+        existing = await self.repository.get_by_id(dataset_id)
+        if not existing:
+            raise ValueError("Dataset not found")
+        
+        if schema.name is not None: existing.name = schema.name
+        if schema.datasource_id is not None: existing.datasource_id = schema.datasource_id
+        if schema.type is not None: existing.type = schema.type
+        if schema.info is not None: existing.info = schema.info
+        if schema.description is not None: existing.description = schema.description
+        if schema.status is not None: existing.status = schema.status
+        
+        await self.repository.update(existing)
+        return existing
+
+    async def delete_dataset(self, dataset_id: str) -> None:
+        await self.repository.delete(dataset_id)
 
     async def get_dataset(self, dataset_id: str) -> Dataset | None:
         return await self.repository.get_by_id(dataset_id)

@@ -23,6 +23,24 @@ class DatasetRepository:
         stmt = select(DatasetMySQL).offset(offset).limit(limit)
         result = await self.session.execute(stmt)
         return [DatasetMapper.to_entity(r) for r in result.scalars().all()]
+
+    async def update(self, dataset: Dataset) -> Dataset:
+        model = await self.session.get(DatasetMySQL, dataset.id)
+        if model:
+            model.name = dataset.name
+            model.datasource_id = dataset.datasource_id
+            model.type = dataset.type
+            model.info = dataset.info
+            model.description = dataset.description
+            model.status = dataset.status
+            await self.session.commit()
+        return dataset
+
+    async def delete(self, dataset_id: str) -> None:
+        model = await self.session.get(DatasetMySQL, dataset_id)
+        if model:
+            await self.session.delete(model)
+            await self.session.commit()
         
     async def create_field(self, field: DatasetField) -> DatasetField:
         model = DatasetFieldMapper.to_model(field)

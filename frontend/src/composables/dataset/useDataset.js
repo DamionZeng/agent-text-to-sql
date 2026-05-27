@@ -20,6 +20,12 @@ export function useDataset() {
     }
   }
 
+  async function fetchDataset(id) {
+    const res = await fetch(`${API_BASE}/${id}`)
+    if (!res.ok) throw new Error('加载数据集详情失败')
+    return await res.json()
+  }
+
   async function createDataset(data) {
     const res = await fetch(`${API_BASE}`, {
       method: 'POST',
@@ -27,6 +33,24 @@ export function useDataset() {
       body: JSON.stringify(data),
     })
     if (!res.ok) throw new Error('创建数据集失败')
+    return await res.json()
+  }
+
+  async function updateDataset(id, data) {
+    const res = await fetch(`${API_BASE}/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw new Error('更新数据集失败')
+    return await res.json()
+  }
+
+  async function deleteDataset(id) {
+    const res = await fetch(`${API_BASE}/${id}`, {
+      method: 'DELETE',
+    })
+    if (!res.ok) throw new Error('删除数据集失败')
     return await res.json()
   }
 
@@ -67,7 +91,10 @@ export function useDataset() {
     datasets,
     loading,
     fetchList,
+    fetchDataset,
     createDataset,
+    updateDataset,
+    deleteDataset,
     fetchDatasources,
     fetchDatasourceSchema,
     executeSql,

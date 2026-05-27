@@ -152,28 +152,50 @@
               <a-tabs v-model:activeKey="activeBottomTab" class="bottom-tabs">
                 <a-tab-pane key="metadata" tab="元数据" />
                 <a-tab-pane key="preview" tab="数据预览" />
+                <a-tab-pane key="joins" tab="关联配置" v-if="tableLinks.length > 0" />
               </a-tabs>
+              <div class="header-actions">
+                <a-button size="small" type="primary" ghost @click="refreshData" :loading="runningSql">
+                  <ReloadOutlined /> 刷新数据
+                </a-button>
+              </div>
             </div>
 
             <div class="bottom-body">
               <!-- Metadata Module -->
               <div v-if="activeBottomTab === 'metadata'" class="metadata-container">
                 <div v-if="!currentMetadata.table" class="empty-state">
-                  <a-empty description="选择表以查看元数据" />
+                  <a-empty description="选择左侧或画布中的表以管理字段" />
                 </div>
                 <div v-else class="metadata-content">
                   <div class="meta-table-info">
-                    <h3>{{ currentMetadata.table.name }} <span class="meta-alias" v-if="currentMetadata.table.alias">({{ currentMetadata.table.alias }})</span></h3>
+                    <div class="meta-title-row">
+                      <h3>{{ currentMetadata.table.name }} <span class="meta-alias" v-if="currentMetadata.table.alias">({{ currentMetadata.table.alias }})</span></h3>
+                      <a-checkbox 
+                        :checked="isTableAllSelected(currentMetadata.table.name)"
+                        :indeterminate="isTableIndeterminate(currentMetadata.table.name)"
+                        @change="toggleTableFields(currentMetadata.table.name)"
+                      >
+                        全选/反选
+                      </a-checkbox>
+                    </div>
                     <p class="meta-desc">{{ currentMetadata.table.description || '无表描述' }}</p>
                   </div>
                   <a-table 
                     :columns="metaColumns" 
-                    :data-source="currentMetadata.columns" 
+                    :data-source="getTableFields(currentMetadata.table.name)" 
                     size="small" 
                     :pagination="false"
                     class="meta-table"
+                    row-key="origin_name"
                     :scroll="{ y: 'calc(100vh - 550px)' }"
-                  />
+                  >
+                    <template #bodyCell="{ column, record }">
+                      <template v-if="column.key === 'checked'">
+                        <a-checkbox v-model:checked="record.checked" @change="onFieldCheckChange" />
+                      </template>
+                    </template>
+                  </a-table>
                 </div>
               </div>
 
@@ -193,39 +215,45 @@
                   :loading="runningSql"
                 />
               </div>
-            </div>
-          </div>
 
-          <!-- Join Configuration Module (Right Side) -->
-          <div v-if="tableLinks.length > 0" class="join-config-panel">
-            <div class="panel-header">关联配置</div>
-            <div class="panel-body">
-              <div v-for="(link, idx) in tableLinks" :key="'link_cfg_'+idx" class="join-config-item">
-                <div class="join-title">
-                  <span class="t-name">{{ getTableNameById(link.from) }}</span>
-                  <SwapOutlined />
-                  <span class="t-name">{{ getTableNameById(link.to) }}</span>
+              <!-- Join Configuration Module -->
+              <div v-if="activeBottomTab === 'joins'" class="join-config-container">
+                <div class="join-cards-grid">
+                  <div v-for="(link, idx) in tableLinks" :key="'link_cfg_'+idx" class="join-card">
+                    <div class="join-card-header">
+                      <div class="table-tag left">{{ getTableNameById(link.from) }}</div>
+                      <div class="join-connector">
+                        <span class="join-type-label">{{ link.type.toUpperCase() }}</span>
+                        <div class="connector-line"></div>
+                      </div>
+                      <div class="table-tag right">{{ getTableNameById(link.to) }}</div>
+                    </div>
+                    <div class="join-card-content">
+                      <a-row :gutter="32">
+                        <a-col :span="8">
+                          <div class="input-label">关联类型</div>
+                          <a-select v-model:value="link.type" style="width: 100%" @change="onJoinConfigChange">
+                            <a-select-option value="inner">Inner Join</a-select-option>
+                            <a-select-option value="left">Left Join</a-select-option>
+                            <a-select-option value="right">Right Join</a-select-option>
+                          </a-select>
+                        </a-col>
+                        <a-col :span="8">
+                          <div class="input-label">左表字段 ({{ getTableNameById(link.from) }})</div>
+                          <a-select v-model:value="link.leftField" placeholder="选择字段" style="width: 100%" @change="onJoinConfigChange">
+                            <a-select-option v-for="c in getTableFieldsById(link.from)" :key="c.origin_name" :value="c.origin_name">{{ c.origin_name }}</a-select-option>
+                          </a-select>
+                        </a-col>
+                        <a-col :span="8">
+                          <div class="input-label">右表字段 ({{ getTableNameById(link.to) }})</div>
+                          <a-select v-model:value="link.rightField" placeholder="选择字段" style="width: 100%" @change="onJoinConfigChange">
+                            <a-select-option v-for="c in getTableFieldsById(link.to)" :key="c.origin_name" :value="c.origin_name">{{ c.origin_name }}</a-select-option>
+                          </a-select>
+                        </a-col>
+                      </a-row>
+                    </div>
+                  </div>
                 </div>
-                <a-form layout="vertical" size="small">
-                  <a-form-item label="关联类型">
-                    <a-select v-model:value="link.type">
-                      <a-select-option value="inner">Inner Join</a-select-option>
-                      <a-select-option value="left">Left Join</a-select-option>
-                      <a-select-option value="right">Right Join</a-select-option>
-                    </a-select>
-                  </a-form-item>
-                  <a-form-item label="左表字段">
-                    <a-select v-model:value="link.leftField" placeholder="选择字段">
-                      <a-select-option v-for="c in getColumnsById(link.from)" :key="c.name" :value="c.name">{{ c.name }}</a-select-option>
-                    </a-select>
-                  </a-form-item>
-                  <a-form-item label="右表字段">
-                    <a-select v-model:value="link.rightField" placeholder="选择字段">
-                      <a-select-option v-for="c in getColumnsById(link.to)" :key="c.name" :value="c.name">{{ c.name }}</a-select-option>
-                    </a-select>
-                  </a-form-item>
-                </a-form>
-                <a-divider v-if="idx < tableLinks.length - 1" style="margin: 12px 0" />
               </div>
             </div>
           </div>
@@ -241,13 +269,13 @@ import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { 
   LeftOutlined, SearchOutlined, TableOutlined, CodeOutlined, CaretRightOutlined,
-  CloudUploadOutlined, CloseOutlined, CaretDownOutlined, SwapOutlined
+  CloudUploadOutlined, CloseOutlined, CaretDownOutlined, SwapOutlined, ReloadOutlined
 } from '@ant-design/icons-vue'
 import { useDataset } from '../../composables/dataset/useDataset'
 
 const router = useRouter()
 const route = useRoute()
-const { fetchDatasources, fetchDatasourceSchema, executeSql, fetchTableMetadata, createDataset } = useDataset()
+const { fetchDatasources, fetchDatasourceSchema, executeSql, fetchTableMetadata, createDataset, updateDataset, fetchDataset } = useDataset()
 
 const canvasRef = ref(null)
 const saving = ref(false)
@@ -268,8 +296,9 @@ const formData = reactive({
   description: '',
   datasource_id: undefined,
   type: 'db_table',
-  info: { table_name: undefined, sql: '' },
-  fields: []
+  info: { table_name: undefined, sql: '', canvasTables: [], tableLinks: [] },
+  fields: [],
+  status: 'active'
 })
 
 const filteredTables = computed(() => {
@@ -278,38 +307,66 @@ const filteredTables = computed(() => {
 })
 
 const previewColumns = computed(() => {
-  return formData.fields.map(f => ({
-    title: f.name,
-    dataIndex: f.origin_name,
-    key: f.origin_name,
+  if (previewData.value.length === 0) return []
+  const firstRow = previewData.value[0]
+  return Object.keys(firstRow).map(key => ({
+    title: key,
+    dataIndex: key,
+    key: key,
     width: 150
   }))
 })
 
 const metaColumns = [
-  { title: '字段名', dataIndex: 'name', key: 'name' },
-  { title: '别名', dataIndex: 'alias', key: 'alias' },
-  { title: '类型', dataIndex: 'type', key: 'type' },
-  { title: '描述', dataIndex: 'description', key: 'description' },
-  { title: '角色', dataIndex: 'role', key: 'role' }
+  { title: '启用', dataIndex: 'checked', key: 'checked', width: 60, align: 'center' },
+  { title: '字段名', dataIndex: 'origin_name', key: 'origin_name' },
+  { title: '显示名称', dataIndex: 'name', key: 'name' },
+  { title: '类型', dataIndex: 'data_type', key: 'type' },
+  { title: '描述', dataIndex: 'description', key: 'description' }
 ]
 
 onMounted(async () => {
   try {
     datasources.value = await fetchDatasources()
+    if (route.params.id) {
+      const data = await fetchDataset(route.params.id)
+      formData.name = data.name
+      formData.datasource_id = data.datasource_id
+      formData.type = data.type
+      formData.description = data.description
+      formData.fields = data.fields || []
+      formData.info = data.info || { sql: '', canvasTables: [], tableLinks: [] }
+      
+      if (formData.datasource_id) {
+        await onDatasourceChange(formData.datasource_id)
+        if (formData.info.canvasTables) {
+          canvasTables.value = formData.info.canvasTables
+        }
+        if (formData.info.tableLinks) {
+          tableLinks.value = formData.info.tableLinks
+        }
+        if (formData.type === 'db_table' && formData.info.table_name) {
+          await onTableSelect(formData.info.table_name)
+        } else if (formData.type === 'custom_sql' && formData.info.sql) {
+          await runSql()
+        }
+      }
+    }
   } catch (err) {
-    message.error('初始化失败')
+    message.error('初始化失败: ' + err.message)
   }
 })
 
 const onDatasourceChange = async (dsId) => {
-  formData.info.table_name = undefined
-  formData.fields = []
-  canvasTables.value = []
-  tableLinks.value = []
-  previewData.value = []
-  currentMetadata.value = { table: null, columns: [] }
-  currentSelectedTableName.value = null
+  if (!route.params.id || canvasTables.value.length === 0) {
+    formData.info.table_name = undefined
+    formData.fields = []
+    canvasTables.value = []
+    tableLinks.value = []
+    previewData.value = []
+    currentMetadata.value = { table: null, columns: [] }
+    currentSelectedTableName.value = null
+  }
   try {
     const schema = await fetchDatasourceSchema(dsId)
     schemaTables.value = schema.tables || []
@@ -331,10 +388,35 @@ const onTableSelect = async (tableName) => {
   currentSelectedTableName.value = tableName
   formData.info.table_name = tableName
   const table = schemaTables.value.find(t => t.name === tableName)
+  
+  // Auto-add to canvas if empty
+  if (table && canvasTables.value.length === 0) {
+    const newNode = {
+      ...table,
+      id: 'node_' + Date.now(),
+      x: 100,
+      y: 100
+    }
+    canvasTables.value.push(newNode)
+  }
+
   if (table) {
-    updateFieldsFromSchema(table.columns)
-    fetchRealPreview(`SELECT * FROM ${tableName} LIMIT 50`)
+    // Only add if not already in fields
+    if (!formData.fields.some(f => f.tableName === tableName)) {
+      const newFields = table.columns.map(col => ({
+        tableName: tableName,
+        origin_name: col.name,
+        name: col.name,
+        data_type: col.type,
+        checked: true
+      }))
+      formData.fields.push(...newFields)
+    }
     loadMetadata(tableName)
+    // Fetch preview if it's the only table
+    if (canvasTables.value.length <= 1) {
+      fetchRealPreview(`SELECT * FROM ${tableName} LIMIT 50`)
+    }
   }
 }
 
@@ -343,18 +425,99 @@ const loadMetadata = async (tableName) => {
   try {
     const meta = await fetchTableMetadata(formData.datasource_id, tableName)
     currentMetadata.value = meta
+    // Update descriptions in formData.fields if available
+    if (meta.columns) {
+      meta.columns.forEach(mc => {
+        const field = formData.fields.find(f => f.tableName === tableName && f.origin_name === mc.name)
+        if (field) {
+          field.description = mc.description
+          field.name = mc.alias || field.name
+          field.role = mc.role
+        }
+      })
+    }
   } catch (err) {
     console.error('Meta load failed', err)
   }
 }
 
-const updateFieldsFromSchema = (columns) => {
-  formData.fields = columns.map(col => ({
-    origin_name: col.name,
-    name: col.name,
-    data_type: col.type,
-    checked: true
-  }))
+// Field Management Helpers
+const getTableFields = (tableName) => {
+  return formData.fields.filter(f => f.tableName === tableName)
+}
+
+const isTableAllSelected = (tableName) => {
+  const fields = getTableFields(tableName)
+  return fields.length > 0 && fields.every(f => f.checked)
+}
+
+const isTableIndeterminate = (tableName) => {
+  const fields = getTableFields(tableName)
+  const checkedCount = fields.filter(f => f.checked).length
+  return checkedCount > 0 && checkedCount < fields.length
+}
+
+const toggleTableFields = (tableName) => {
+  const allSelected = isTableAllSelected(tableName)
+  formData.fields.forEach(f => {
+    if (f.tableName === tableName) f.checked = !allSelected
+  })
+  onFieldCheckChange()
+}
+
+const onFieldCheckChange = () => {
+  if (formData.type === 'db_table') {
+    formData.info.sql = generateJoinSql()
+  }
+}
+
+const onJoinConfigChange = () => {
+  if (formData.type === 'db_table') {
+    formData.info.sql = generateJoinSql()
+  }
+}
+
+// SQL Generation Logic
+const generateJoinSql = () => {
+  if (canvasTables.value.length === 0) return ''
+  
+  const selectedFields = formData.fields.filter(f => f.checked)
+  const selectClause = selectedFields.length > 0 
+    ? selectedFields.map(f => `${f.tableName}.${f.origin_name} AS "${f.tableName}.${f.origin_name}"`).join(', ')
+    : '*'
+
+  if (canvasTables.value.length === 1) {
+    return `SELECT ${selectClause} FROM ${canvasTables.value[0].name}`
+  }
+  
+  let sql = `SELECT ${selectClause} FROM ${canvasTables.value[0].name}`
+  
+  tableLinks.value.forEach(link => {
+    const fromTable = canvasTables.value.find(t => t.id === link.from)
+    const toTable = canvasTables.value.find(t => t.id === link.to)
+    if (fromTable && toTable) {
+      const joinType = link.type === 'inner' ? 'INNER JOIN' : (link.type === 'left' ? 'LEFT JOIN' : 'RIGHT JOIN')
+      const condition = (link.leftField && link.rightField) 
+        ? `ON ${fromTable.name}.${link.leftField} = ${toTable.name}.${link.rightField}` 
+        : 'ON 1=1'
+      sql += `\n${joinType} ${toTable.name} ${condition}`
+    }
+  })
+  return sql
+}
+
+const refreshData = async () => {
+  if (formData.type === 'custom_sql') {
+    await runSql()
+  } else {
+    const generatedSql = generateJoinSql()
+    if (generatedSql) {
+      formData.info.sql = generatedSql
+      await fetchRealPreview(generatedSql)
+      activeBottomTab.value = 'preview'
+      message.success('数据已刷新')
+    }
+  }
 }
 
 // Node Interaction
@@ -366,8 +529,6 @@ const handleDragOver = (e) => {
   const rect = canvasRef.value.getBoundingClientRect()
   const mouseX = e.clientX - rect.left
   const mouseY = e.clientY - rect.top
-  
-  // Find proximity for highlighting
   const nearest = findNearestNode(mouseX, mouseY)
   highlightedNodeId.value = nearest ? nearest.id : null
 }
@@ -390,11 +551,12 @@ const handleDrop = (e) => {
     y
   }
   
-  // Proximity join logic
   const targetNode = findNearestNode(x + 75, y + 20)
-  
   canvasTables.value.push(newNode)
   
+  // Also ensure fields are loaded when dropped
+  onTableSelect(table.name)
+
   if (targetNode) {
     tableLinks.value.push({
       from: targetNode.id,
@@ -406,16 +568,12 @@ const handleDrop = (e) => {
     message.success(`已与 ${targetNode.name} 建立连接`)
   }
 
-  if (canvasTables.value.length === 1) {
-    onTableSelect(table.name)
-  }
   highlightedNodeId.value = null
 }
 
 const findNearestNode = (x, y) => {
   let nearest = null
-  let minDistance = 150 // Proximity threshold
-  
+  let minDistance = 150
   canvasTables.value.forEach(node => {
     const dx = node.x + 75 - x
     const dy = node.y + 20 - y
@@ -430,13 +588,17 @@ const findNearestNode = (x, y) => {
 
 const removeTable = (index) => {
   const tableId = canvasTables.value[index].id
+  const tableName = canvasTables.value[index].name
   canvasTables.value.splice(index, 1)
-  // Remove associated links
   tableLinks.value = tableLinks.value.filter(l => l.from !== tableId && l.to !== tableId)
+  
+  // Remove fields of this table if it's the only instance
+  if (!canvasTables.value.some(t => t.name === tableName)) {
+    formData.fields = formData.fields.filter(f => f.tableName !== tableName)
+  }
   
   if (canvasTables.value.length === 0) {
     formData.info.table_name = undefined
-    formData.fields = []
     previewData.value = []
     currentMetadata.value = { table: null, columns: [] }
     currentSelectedTableName.value = null
@@ -469,45 +631,35 @@ const onMouseUp = () => {
   document.removeEventListener('mouseup', onMouseUp)
 }
 
-const onCanvasMouseDown = (e) => {
+const onCanvasMouseDown = () => {
   currentSelectedTableName.value = null
 }
 
-// Link Path Rendering
 const getLinkPath = (link) => {
   const from = canvasTables.value.find(t => t.id === link.from)
   const to = canvasTables.value.find(t => t.id === link.to)
   if (!from || !to) return ''
-  
-  const startX = from.x + 150
+  const startX = from.x + 160
   const startY = from.y + 20
   const endX = to.x
   const endY = to.y + 20
-  
   const cp1x = startX + (endX - startX) / 2
   const cp2x = startX + (endX - startX) / 2
-  
   return `M ${startX} ${startY} C ${cp1x} ${startY}, ${cp2x} ${endY}, ${endX} ${endY}`
 }
 
 const getTableNameById = (id) => canvasTables.value.find(t => t.id === id)?.name || ''
-const getColumnsById = (id) => canvasTables.value.find(t => t.id === id)?.columns || []
+const getTableFieldsById = (id) => {
+  const name = getTableNameById(id)
+  return getTableFields(name)
+}
 
-// SQL Actions
 const runSql = async () => {
   if (!formData.info.sql || !formData.datasource_id) return
   runningSql.value = true
   try {
     const results = await executeSql(formData.datasource_id, formData.info.sql)
     previewData.value = results
-    if (results.length > 0) {
-      const keys = Object.keys(results[0])
-      formData.fields = keys.map(k => ({
-        origin_name: k,
-        name: k,
-        checked: true
-      }))
-    }
   } catch (err) {
     message.error(err.message)
   } finally {
@@ -523,22 +675,45 @@ const fetchRealPreview = async (sql) => {
     previewData.value = results
   } catch (err) {
     console.error('Preview failed', err)
+    message.error('预览刷新失败: ' + err.message)
   } finally {
     runningSql.value = false
   }
 }
 
 const handleSave = async () => {
-  if (!formData.name || !formData.datasource_id || (!formData.info.table_name && !formData.info.sql)) {
+  if (!formData.name || !formData.datasource_id || (!canvasTables.value.length && !formData.info.sql)) {
     return message.warning('请填写完整的必要信息')
   }
+  
   saving.value = true
+  const finalInfo = {
+    ...formData.info,
+    canvasTables: canvasTables.value,
+    tableLinks: tableLinks.value,
+    table_name: canvasTables.value.length > 0 ? canvasTables.value[0].name : undefined
+  }
+  
+  if (formData.type === 'db_table') {
+    finalInfo.sql = generateJoinSql()
+  }
+
+  const payload = {
+    ...formData,
+    info: finalInfo
+  }
+
   try {
-    await createDataset(formData)
-    message.success('数据集创建成功')
+    if (route.params.id) {
+      await updateDataset(route.params.id, payload)
+      message.success('数据集更新成功')
+    } else {
+      await createDataset(payload)
+      message.success('数据集创建成功')
+    }
     router.push('/dataset/list')
   } catch (err) {
-    message.error(err.message || '创建失败')
+    message.error(err.message || '操作失败')
   } finally {
     saving.value = false
   }
@@ -565,10 +740,7 @@ const handleSave = async () => {
 }
 .sidebar-section { padding: 16px; border-bottom: 1px solid #f0f0f0; }
 .section-title { font-size: 12px; font-weight: 500; color: #8c8c8c; margin-bottom: 8px; display: block; }
-.section-header {
-  display: flex; align-items: center; justify-content: space-between;
-
-}
+.section-header { display: flex; align-items: center; justify-content: space-between; }
 .table-count { font-size: 11px; color: #8c8c8c; background: #f5f5f5; padding: 0 6px; border-radius: 10px; }
 .search-box { margin: 8px 0 12px; }
 
@@ -600,17 +772,19 @@ const handleSave = async () => {
 .placeholder-icon { font-size: 48px; margin-bottom: 12px; }
 
 .canvas-table-node {
-  position: absolute; background: #fff; border: 1px solid #d9d9d9; border-radius: 4px; width: 150px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05); cursor: move; transition: border-color 0.2s, box-shadow 0.2s;
+  position: absolute; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; width: 160px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); 
+  cursor: move; transition: border-color 0.2s, box-shadow 0.2s;
   z-index: 10;
 }
-.canvas-table-node:hover { border-color: #1890ff; }
-.canvas-table-node.active { border-color: #1890ff; box-shadow: 0 0 0 2px rgba(24,144,255,0.2); }
-.canvas-table-node.highlighted { border-color: #52c41a; box-shadow: 0 0 8px rgba(82,196,26,0.5); }
+.canvas-table-node:hover { border-color: #3b82f6; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
+.canvas-table-node.active { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+.canvas-table-node.highlighted { border-color: #10b981; box-shadow: 0 0 12px rgba(16, 185, 129, 0.4); }
 
 .node-header {
-  padding: 8px 12px; background: #f5f5f5; border-bottom: 1px solid #f0f0f0;
-  display: flex; align-items: center; gap: 8px; font-size: 12px;
+  padding: 10px 14px; background: #f8fafc; border-bottom: 1px solid #f1f5f9;
+  border-radius: 8px 8px 0 0;
+  display: flex; align-items: center; gap: 8px; font-size: 12px; color: #475569;
 }
 .node-name { flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .node-close { font-size: 10px; cursor: pointer; color: #8c8c8c; }
@@ -630,36 +804,56 @@ const handleSave = async () => {
 
 .bottom-area { flex: 1; display: flex; overflow: hidden; background: #fff; }
 .bottom-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-.bottom-header { height: 40px; border-bottom: 1px solid #f0f0f0; padding: 0 16px; }
+.bottom-header { 
+  height: 40px; border-bottom: 1px solid #f0f0f0; padding: 0 16px; 
+  display: flex; align-items: center; justify-content: space-between;
+}
 .bottom-tabs :deep(.ant-tabs-nav) { margin-bottom: 0; }
 .bottom-body { flex: 1; overflow: hidden; display: flex; }
 
 .metadata-container { flex: 1; display: flex; flex-direction: column; padding: 16px; overflow-y: auto; }
-.meta-table-info h3 { margin-bottom: 4px; }
+.meta-table-info { margin-bottom: 16px; }
+.meta-title-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.meta-title-row h3 { margin: 0; }
 .meta-alias { color: #8c8c8c; font-size: 14px; }
-.meta-desc { color: #595959; margin-bottom: 16px; }
+.meta-desc { color: #595959; margin: 0; }
 
 .preview-container { flex: 1; overflow: hidden; padding: 16px; }
 .empty-state { height: 100%; display: flex; align-items: center; justify-content: center; }
 
-.join-config-panel {
-  width: 280px; border-left: 1px solid #d9d9d9; background: #fafafa; display: flex; flex-direction: column;
+.join-config-container {
+  flex: 1; overflow-y: auto; padding: 24px; background: #f8fafc;
 }
-.panel-header { padding: 12px 16px; font-weight: 600; border-bottom: 1px solid #f0f0f0; background: #fff; }
-.panel-body { flex: 1; overflow-y: auto; padding: 16px; }
-.join-title { 
-  display: flex; align-items: center; gap: 8px; margin-bottom: 16px; font-size: 12px; 
-  color: #1890ff; font-weight: 500; justify-content: center;
+.join-cards-grid {
+  display: flex; flex-direction: column; gap: 20px; max-width: 1000px; margin: 0 auto;
 }
-.t-name { max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.placeholder-content {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+.join-card {
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); overflow: hidden; transition: all 0.3s;
+}
+.join-card:hover { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); border-color: #cbd5e1; }
+.join-card-header {
+  padding: 16px 24px; background: #f8fafc; border-bottom: 1px solid #f1f5f9;
+  display: flex; align-items: center; justify-content: center; gap: 24px;
+}
+.table-tag {
+  background: #fff; border: 1px solid #e2e8f0; padding: 6px 20px; border-radius: 20px;
+  font-weight: 600; font-size: 13px; color: #334155; box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+.join-connector { display: flex; flex-direction: column; align-items: center; min-width: 120px; }
+.join-type-label {
+  font-size: 11px; font-weight: 700; color: #2563eb; background: #eff6ff;
+  padding: 2px 10px; border-radius: 4px; margin-bottom: 6px; border: 1px solid #dbeafe;
+}
+.connector-line { height: 2px; width: 100%; background: #3b82f6; position: relative; }
+.connector-line::after {
+  content: ''; position: absolute; right: 0; top: 50%; transform: translateY(-50%);
+  border: 4px solid transparent; border-left-color: #3b82f6;
+}
+.join-card-content { padding: 24px 32px; }
+.input-label { font-size: 12px; color: #64748b; margin-bottom: 8px; font-weight: 500; }
 
+.placeholder-content { display: flex; flex-direction: column; align-items: center; justify-content: center; }
 
-}
 :deep(.ant-table-thead > tr > th) { background: #fafafa; }
-
 </style>
