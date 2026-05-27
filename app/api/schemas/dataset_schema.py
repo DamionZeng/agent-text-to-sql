@@ -35,6 +35,7 @@ class DatasetFieldResponse(DatasetFieldBase):
 class DatasetBase(BaseModel):
     name: str = Field(..., description="Dataset Name")
     datasource_id: str = Field(..., description="DataSource ID")
+    group_id: Optional[str] = Field(None, description="Group ID")
     type: str = Field("db_table", description="db_table, custom_sql")
     info: Optional[Any] = Field(None, description="JSON storing table_name, sql_text, layout, etc.")
     description: Optional[str] = Field(None, description="Description")
@@ -46,6 +47,7 @@ class DatasetCreate(DatasetBase):
 class DatasetUpdate(BaseModel):
     name: Optional[str] = None
     datasource_id: Optional[str] = None
+    group_id: Optional[str] = None
     type: Optional[str] = None
     info: Optional[Any] = None
     description: Optional[str] = None
@@ -57,6 +59,20 @@ class DatasetResponse(DatasetBase):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     fields: Optional[List[DatasetFieldResponse]] = None
+
+    class Config:
+        orm_mode = True
+
+class DatasetGroupBase(BaseModel):
+    name: str = Field(..., description="Group Name")
+
+class DatasetGroupCreate(DatasetGroupBase):
+    pass
+
+class DatasetGroupResponse(DatasetGroupBase):
+    id: str
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         orm_mode = True

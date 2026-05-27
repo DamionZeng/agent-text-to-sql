@@ -14,6 +14,7 @@ class DatasetService:
             id=ds_id,
             name=schema.name,
             datasource_id=schema.datasource_id,
+            group_id=schema.group_id,
             type=schema.type,
             info=schema.info,
             description=schema.description,
@@ -29,6 +30,7 @@ class DatasetService:
         
         if schema.name is not None: existing.name = schema.name
         if schema.datasource_id is not None: existing.datasource_id = schema.datasource_id
+        if schema.group_id is not None: existing.group_id = schema.group_id
         if schema.type is not None: existing.type = schema.type
         if schema.info is not None: existing.info = schema.info
         if schema.description is not None: existing.description = schema.description
@@ -43,5 +45,15 @@ class DatasetService:
     async def get_dataset(self, dataset_id: str) -> Dataset | None:
         return await self.repository.get_by_id(dataset_id)
 
-    async def list_datasets(self) -> list[Dataset]:
-        return await self.repository.list_all()
+    async def list_datasets(self, group_id: str | None = None) -> list[Dataset]:
+        return await self.repository.list_all(group_id=group_id)
+
+    # ========== Groups ==========
+    async def create_group(self, name: str) -> str:
+        return await self.repository.create_group(name)
+
+    async def list_groups(self) -> list[dict]:
+        return await self.repository.list_groups()
+
+    async def delete_group(self, group_id: str) -> None:
+        await self.repository.delete_group(group_id)

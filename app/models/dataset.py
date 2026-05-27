@@ -20,6 +20,11 @@ class DatasetMySQL(Base):
         nullable=False,
         comment="Dataset Name"
     )
+    group_id: Mapped[str | None] = mapped_column(
+        String(36),
+        nullable=True,
+        comment="Group ID"
+    )
     datasource_id: Mapped[str] = mapped_column(
         String(36),
         nullable=False,
@@ -44,6 +49,32 @@ class DatasetMySQL(Base):
         String(32),
         default="active",
         comment="active, inactive"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+        comment="Created At"
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+        onupdate=func.now(),
+        comment="Updated At"
+    )
+
+
+class DatasetGroupMySQL(Base):
+    __tablename__ = "dataset_group"
+
+    id: Mapped[str] = mapped_column(
+        String(36),
+        primary_key=True,
+        comment="UUID"
+    )
+    name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        comment="Group Name"
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime,

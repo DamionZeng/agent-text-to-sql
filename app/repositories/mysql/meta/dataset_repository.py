@@ -1,8 +1,9 @@
-from sqlalchemy import select
+import uuid
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.entities.dataset import Dataset
 from app.entities.dataset_field import DatasetField
-from app.models.dataset import DatasetMySQL, DatasetFieldMySQL
+from app.models.dataset import DatasetMySQL, DatasetFieldMySQL, DatasetGroupMySQL
 from app.repositories.mysql.meta.mappers.dataset_mapper import DatasetMapper, DatasetFieldMapper
 
 class DatasetRepository:
@@ -19,8 +20,14 @@ class DatasetRepository:
         result = await self.session.get(DatasetMySQL, dataset_id)
         return DatasetMapper.to_entity(result) if result else None
 
-    async def list_all(self, offset: int = 0, limit: int = 20) -> list[Dataset]:
-        stmt = select(DatasetMySQL).offset(offset).limit(limit)
+    async def list_all(self, offset: int = 0, limit: int = 20, group_id: str | None = None) -> list[Dataset]:
+        stmt = select(DatasetMySQL)
+        if group_id:
+            if group_id == 'default':
+                stmt = stmt.where(DatasetMySQL.group_id == None)
+            else:
+                stmt = stmt.where(DatasetMySQL.group_id == group_id)
+        stmt = stmt.offset(offset).limit(limit)
         result = await self.session.execute(stmt)
         return [DatasetMapper.to_entity(r) for r in result.scalars().all()]
 
@@ -29,6 +36,7 @@ class DatasetRepository:
         if model:
             model.name = dataset.name
             model.datasource_id = dataset.datasource_id
+            model.group_id = dataset.group_id
             model.type = dataset.type
             model.info = dataset.info
             model.description = dataset.description
@@ -42,6 +50,30 @@ class DatasetRepository:
             await self.session.delete(model)
             await self.session.commit()
         
+    # ========== Dataset Group ==========
+    async def create_group(self, name: str) -> str:
+        group_id = str(uuid.uuid4())
+        model = DatasetGroupMySQL(id=group_id, name=name)
+        self.session.add(model)
+        await self.session.commit()
+        return group_id
+
+    async def list_groups(self) -> list[dict]:
+        stmt = select(DatasetGroupMySQL)
+        result = await self.session.execute(stmt)
+        return [{"id": r.id, "name": r.name} for r in result.scalars().all()]
+
+    async def delete_group(self, group_id: str) -> None:
+        model = await self.session.get(DatasetGroupMySQL, group_id)
+        if model:
+            await self.session.delete(model)
+            # Nullify group_id in datasets
+            await self.session.execute(
+                update(DatasetMySQL).where(DatasetMySQL.group_id == group_id).values(group_id=None)
+            )
+            await self.session.commit()
+
+    # Legacy fields support (if still needed by some code)
     async def create_field(self, field: DatasetField) -> DatasetField:
         model = DatasetFieldMapper.to_model(field)
         self.session.add(model)

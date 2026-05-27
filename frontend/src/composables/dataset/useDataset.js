@@ -7,10 +7,11 @@ export function useDataset() {
   const datasets = ref([])
   const loading = ref(false)
 
-  async function fetchList() {
+  async function fetchList(groupId = null) {
     loading.value = true
     try {
-      const res = await fetch(`${API_BASE}`)
+      const url = groupId ? `${API_BASE}?group_id=${groupId}` : API_BASE
+      const res = await fetch(url)
       if (!res.ok) throw new Error('加载数据集列表失败')
       const data = await res.json()
       datasets.value = data || []
@@ -51,6 +52,30 @@ export function useDataset() {
       method: 'DELETE',
     })
     if (!res.ok) throw new Error('删除数据集失败')
+    return await res.json()
+  }
+
+  // ========== Groups ==========
+
+  async function fetchGroups() {
+    const res = await fetch(`${API_BASE}/groups`)
+    if (!res.ok) throw new Error('加载分组失败')
+    return await res.json()
+  }
+
+  async function createGroup(name) {
+    const res = await fetch(`${API_BASE}/groups`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+    if (!res.ok) throw new Error('创建分组失败')
+    return await res.json()
+  }
+
+  async function deleteGroup(id) {
+    const res = await fetch(`${API_BASE}/groups/${id}`, { method: 'DELETE' })
+    if (!res.ok) throw new Error('删除分组失败')
     return await res.json()
   }
 
@@ -95,6 +120,9 @@ export function useDataset() {
     createDataset,
     updateDataset,
     deleteDataset,
+    fetchGroups,
+    createGroup,
+    deleteGroup,
     fetchDatasources,
     fetchDatasourceSchema,
     executeSql,
