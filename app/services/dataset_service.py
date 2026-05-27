@@ -55,5 +55,8 @@ class DatasetService:
     async def list_groups(self) -> list[dict]:
         return await self.repository.list_groups()
 
+    async def get_counts(self) -> dict:
+        return await self.repository.get_counts()
+
     async def delete_group(self, group_id: str) -> None:
         await self.repository.delete_group(group_id)

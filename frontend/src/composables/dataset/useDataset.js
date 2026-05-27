@@ -63,6 +63,12 @@ export function useDataset() {
     return await res.json()
   }
 
+  async function fetchCounts() {
+    const res = await fetch(`${API_BASE}/counts`)
+    if (!res.ok) throw new Error('加载计数失败')
+    return await res.json()
+  }
+
   async function createGroup(name) {
     const res = await fetch(`${API_BASE}/groups`, {
       method: 'POST',
@@ -121,6 +127,7 @@ export function useDataset() {
     updateDataset,
     deleteDataset,
     fetchGroups,
+    fetchCounts,
     createGroup,
     deleteGroup,
     fetchDatasources,

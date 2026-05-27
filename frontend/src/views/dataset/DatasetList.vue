@@ -53,6 +53,7 @@
             >
               <FolderOutlined />
               <span class="name">{{ group.name }}</span>
+              <span class="count">{{ group.count || 0 }}</span>
               <div class="group-actions">
                 <a-popconfirm title="确定删除该分组吗？" @confirm="handleDeleteGroup(group.id)">
                   <DeleteOutlined class="del-icon" @click.stop />
@@ -129,7 +130,7 @@ import { useDataset } from '../../composables/dataset/useDataset'
 import { message } from 'ant-design-vue'
 
 const router = useRouter()
-const { datasets, loading, fetchList, deleteDataset, fetchGroups, createGroup, deleteGroup } = useDataset()
+const { datasets, loading, fetchList, deleteDataset, fetchGroups, fetchCounts, createGroup, deleteGroup } = useDataset()
 
 const groupSearch = ref('')
 const groups = ref([])
@@ -155,21 +156,21 @@ const filteredGroups = computed(() => {
 })
 
 const loadData = async () => {
-  // Fetch groups
+  // Fetch groups and counts
   try {
-    groups.value = await fetchGroups()
+    const [groupsData, countsData] = await Promise.all([
+      fetchGroups(),
+      fetchCounts()
+    ])
+    groups.value = groupsData
+    totalDatasetCount.value = countsData.total
+    defaultGroupCount.value = countsData.default
   } catch (e) {
-    message.error('加载分组失败')
+    message.error('加载分组或计数失败')
   }
 
   // Fetch datasets for active group
   await fetchList(activeGroup.value === 'all' ? null : activeGroup.value)
-  
-  // Update counts (mock logic for now, in production we might need a dedicated count API)
-  if (activeGroup.value === 'all') {
-    totalDatasetCount.value = datasets.value.length
-    defaultGroupCount.value = datasets.value.filter(d => !d.group_id).length
-  }
 }
 
 const onGroupSelect = async (groupId) => {
@@ -223,7 +224,7 @@ const handleDelete = async (id) => {
   try {
     await deleteDataset(id)
     message.success('删除成功')
-    await fetchList(activeGroup.value === 'all' ? null : activeGroup.value)
+    await loadData()
   } catch (e) {
     console.error(e)
   }

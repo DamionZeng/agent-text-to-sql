@@ -17,6 +17,10 @@ def get_dataset_service(session: AsyncSession = Depends(get_meta_session)):
 async def list_groups(service: DatasetService = Depends(get_dataset_service)):
     return await service.list_groups()
 
+@router.get("/counts", response_model=dict)
+async def get_counts(service: DatasetService = Depends(get_dataset_service)):
+    return await service.get_counts()
+
 @router.post("/groups", response_model=dict)
 async def create_group(payload: dict, service: DatasetService = Depends(get_dataset_service)):
     name = payload.get("name")

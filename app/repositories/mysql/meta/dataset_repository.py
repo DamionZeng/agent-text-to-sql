@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import select, update
+from sqlalchemy import select, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.entities.dataset import Dataset
 from app.entities.dataset_field import DatasetField
@@ -59,9 +59,30 @@ class DatasetRepository:
         return group_id
 
     async def list_groups(self) -> list[dict]:
+        # Get counts per group
+        count_stmt = select(DatasetMySQL.group_id, func.count(DatasetMySQL.id).label("count")).group_by(DatasetMySQL.group_id)
+        count_result = await self.session.execute(count_stmt)
+        counts = {r.group_id: r.count for r in count_result.all() if r.group_id is not None}
+
         stmt = select(DatasetGroupMySQL)
         result = await self.session.execute(stmt)
-        return [{"id": r.id, "name": r.name} for r in result.scalars().all()]
+        return [{"id": r.id, "name": r.name, "count": counts.get(r.id, 0)} for r in result.scalars().all()]
+
+    async def get_counts(self) -> dict:
+        # Total count
+        total_stmt = select(func.count(DatasetMySQL.id))
+        total_res = await self.session.execute(total_stmt)
+        total_count = total_res.scalar() or 0
+
+        # Default count (group_id is null)
+        default_stmt = select(func.count(DatasetMySQL.id)).where(DatasetMySQL.group_id == None)
+        default_res = await self.session.execute(default_stmt)
+        default_count = default_res.scalar() or 0
+
+        return {
+            "total": total_count,
+            "default": default_count
+        }
 
     async def delete_group(self, group_id: str) -> None:
         model = await self.session.get(DatasetGroupMySQL, group_id)
