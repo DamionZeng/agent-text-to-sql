@@ -2,15 +2,15 @@
   <div class="dashboard-list-page">
     <div class="page-header">
       <div class="page-title">
-        <h2>数据大屏</h2>
-        <p class="page-desc">创建和管理数据可视化大屏，支持拖拽编排、多图表组合</p>
+        <h2>仪表板</h2>
+        <p class="page-desc">创建和管理多维仪表板，支持拖拽编排、多图表组合</p>
       </div>
       <a-space size="middle">
         <a-button @click="showAiGenerateModal">
-          <RobotOutlined /> AI 创建大屏
+          <RobotOutlined /> AI 创建仪表板
         </a-button>
         <a-button type="primary" @click="showCreateModal = true">
-          <PlusOutlined /> 新建大屏
+          <PlusOutlined /> 新建仪表板
         </a-button>
       </a-space>
     </div>
@@ -47,22 +47,22 @@
       </div>
     </a-spin>
 
-    <a-empty v-else description="暂无数据大屏，点击上方按钮创建">
+    <a-empty v-else description="暂无仪表板，点击上方按钮创建">
       <a-button type="primary" @click="showCreateModal = true">
-        <PlusOutlined /> 新建大屏
+        <PlusOutlined /> 新建仪表板
       </a-button>
     </a-empty>
 
     <a-modal
       v-model:open="showCreateModal"
-      title="新建大屏"
+      title="新建仪表板"
       @ok="handleCreate"
       :confirmLoading="creating"
       width="480px"
     >
       <a-form layout="vertical">
-        <a-form-item label="大屏名称" required>
-          <a-input v-model:value="createForm.name" placeholder="例如：电商运营看板" />
+        <a-form-item label="仪表板名称" required>
+          <a-input v-model:value="createForm.name" placeholder="例如：销售分析看板" />
         </a-form-item>
         <a-form-item label="描述">
           <a-textarea v-model:value="createForm.description" placeholder="简要描述（可选）" :rows="2" />
@@ -78,7 +78,7 @@
 
     <a-modal
       v-model:open="showAIModal"
-      title="AI 创建大屏"
+      title="AI 创建仪表板"
       width="520px"
       :footer="null"
     >
@@ -99,10 +99,10 @@
             </a-select-option>
           </a-select>
         </a-form-item>
-        <a-form-item label="描述你的大屏需求">
+        <a-form-item label="描述你的仪表板需求">
           <a-textarea
             v-model:value="aiPrompt"
-            placeholder="例如：做一个电商运营看板，包含总销售额、月趋势图、品类占比、Top10品类"
+            placeholder="例如：做一个销售分析看板，包含总销售额、趋势图、Top10产品等"
             :rows="4"
           />
         </a-form-item>
@@ -117,14 +117,14 @@
 
     <a-modal
       v-model:open="showRenameModal"
-      title="编辑大屏信息"
+      title="编辑仪表板信息"
       @ok="handleRename"
       :confirmLoading="renaming"
       width="400px"
     >
       <a-form layout="vertical">
-        <a-form-item label="大屏名称" required>
-          <a-input v-model:value="renameForm.name" placeholder="大屏名称" />
+        <a-form-item label="仪表板名称" required>
+          <a-input v-model:value="renameForm.name" placeholder="仪表板名称" />
         </a-form-item>
         <a-form-item label="描述">
           <a-textarea v-model:value="renameForm.description" placeholder="简要描述（可选）" :rows="2" />

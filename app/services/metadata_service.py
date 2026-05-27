@@ -154,6 +154,74 @@ class MetadataService:
             await self.datasource_repository.update(ds)
             return False, f"连接失败: {str(e)}"
 
+    async def get_datasource_schema(self, datasource_id: str):
+        from app.clients.datasource import datasource_manager
+        from app.repositories.db_executor import get_executor
+
+        ds = await self.datasource_repository.get_by_id(datasource_id)
+        if not ds:
+            raise ValueError("数据源不存在")
+
+        datasource_manager.register(ds)
+        config = datasource_manager.get_config(datasource_id)
+        executor = get_executor(config.db_type)
+
+        async with datasource_manager.get_session(datasource_id) as session:
+            tables_names = await executor.list_tables(session, ds.database)
+            tables = []
+            for name in tables_names:
+                columns_meta = await executor.get_columns(session, name, ds.database)
+                columns = [{"name": col.name, "type": col.type} for col in columns_meta]
+                tables.append({"name": name, "columns": columns})
+            return {"tables": tables}
+
+    async def execute_sql(self, datasource_id: str, sql: str, limit: int = 100):
+        from app.clients.datasource import datasource_manager
+        from app.repositories.db_executor import get_executor
+
+        ds = await self.datasource_repository.get_by_id(datasource_id)
+        if not ds:
+            raise ValueError("数据源不存在")
+
+        datasource_manager.register(ds)
+        config = datasource_manager.get_config(datasource_id)
+        executor = get_executor(config.db_type)
+
+        # Wrap query to enforce limit if not present and if it's a SELECT
+        if sql.strip().upper().startswith("SELECT") and "LIMIT" not in sql.upper():
+            sql = f"SELECT * FROM ({sql}) AS subquery_limit LIMIT {limit}"
+
+        async with datasource_manager.get_session(datasource_id) as session:
+            try:
+                results = await executor.query(session, sql)
+                return results
+            except Exception as e:
+                raise ValueError(f"SQL 执行失败: {str(e)}")
+
+    async def get_table_metadata(self, datasource_id: str, table_name: str):
+        table_info = await self.meta_mysql_repository.get_table_metadata(datasource_id, table_name)
+        if not table_info:
+            return {"table": None, "columns": []}
+
+        columns = await self.meta_mysql_repository.get_columns_by_table_id(table_info.id)
+        return {
+            "table": {
+                "name": table_info.name,
+                "alias": table_info.alias,
+                "description": table_info.description,
+                "role": table_info.role
+            },
+            "columns": [
+                {
+                    "name": c.name,
+                    "alias": c.alias,
+                    "type": c.type,
+                    "description": c.description,
+                    "role": c.role
+                } for c in columns
+            ]
+        }
+
     # ========== 草稿管理 ==========
 
     async def get_draft(self, datasource_id: str):

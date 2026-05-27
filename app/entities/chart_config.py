@@ -13,6 +13,7 @@ class ChartConfig:
     echarts_option: dict[str, Any] = field(default_factory=dict)
     auto_generated: bool = False
     query_params: dict[str, Any] | None = None
+    dataset_id: str | None = None
     width: int = 6
     height: int = 400
     refresh_interval: int = 0

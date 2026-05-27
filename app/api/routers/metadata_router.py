@@ -94,6 +94,49 @@ async def test_datasource_connection(
     return {"success": success, "message": message}
 
 
+@metadata_router.get("/datasources/{datasource_id}/schema")
+async def get_datasource_schema(
+    datasource_id: str,
+    service: MetadataService = Depends(get_metadata_service)
+):
+    try:
+        return await service.get_datasource_schema(datasource_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@metadata_router.post("/datasources/{datasource_id}/execute")
+async def execute_sql(
+    datasource_id: str,
+    payload: dict,
+    service: MetadataService = Depends(get_metadata_service)
+):
+    sql = payload.get("sql")
+    if not sql:
+        raise HTTPException(status_code=400, detail="SQL 不能为空")
+    try:
+        results = await service.execute_sql(datasource_id, sql)
+        return results
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@metadata_router.get("/datasources/{datasource_id}/tables/{table_name}/metadata")
+async def get_table_metadata(
+    datasource_id: str,
+    table_name: str,
+    service: MetadataService = Depends(get_metadata_service)
+):
+    try:
+        return await service.get_table_metadata(datasource_id, table_name)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ========== 元数据草稿 ==========
 
 @metadata_router.get("/datasources/{datasource_id}/draft", response_model=MetaDraftResponseSchema)

@@ -17,7 +17,12 @@ class ChartConfigMySQL(Base):
     )
     datasource_id: Mapped[str] = mapped_column(
         String(36),
-        comment="数据源ID"
+        comment="閺佺増宓佸┃鎬欴"
+    )
+    dataset_id: Mapped[str | None] = mapped_column(
+        String(36),
+        nullable=True,
+        comment="Linked Dataset ID"
     )
     name: Mapped[str] = mapped_column(
         String(255),

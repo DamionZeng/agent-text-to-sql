@@ -72,6 +72,22 @@ class MetaMysqlRepository:
         else:
             return None
 
+    async def get_table_metadata(self, datasource_id: str, table_name: str) -> TableInfo | None:
+        stmt = (
+            select(TableInfoMySQL)
+            .where(TableInfoMySQL.datasource_id == datasource_id)
+            .where(TableInfoMySQL.name == table_name)
+        )
+        result = await self.session.execute(stmt)
+        row = result.scalars().first()
+        return TableInfoMapper.to_entity(row) if row else None
+
+    async def get_columns_by_table_id(self, table_id: str) -> list[ColumnInfo]:
+        stmt = select(ColumnInfoMySQL).where(ColumnInfoMySQL.table_id == table_id)
+        result = await self.session.execute(stmt)
+        rows = result.scalars().all()
+        return [ColumnInfoMapper.to_entity(row) for row in rows]
+
     async def get_key_columns_by_table_id(self, table_id: str) -> list[ColumnInfo]:
         stmt = (
             select(ColumnInfoMySQL)

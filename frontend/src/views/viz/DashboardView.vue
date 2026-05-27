@@ -5,7 +5,7 @@
         <a-button type="text" @click="goBack">
           <ArrowLeftOutlined /> 返回
         </a-button>
-        <span class="view-title">{{ store.dashboard?.name || '数据大屏' }}</span>
+        <span class="view-title">{{ store.dashboard?.name || '仪表板' }}</span>
       </div>
       <div class="toolbar-right">
         <a-space>

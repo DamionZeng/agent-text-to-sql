@@ -1,0 +1,76 @@
+import { ref } from 'vue'
+
+const API_BASE = '/api/datasets'
+const META_API_BASE = '/api/metadata'
+
+export function useDataset() {
+  const datasets = ref([])
+  const loading = ref(false)
+
+  async function fetchList() {
+    loading.value = true
+    try {
+      const res = await fetch(`${API_BASE}`)
+      if (!res.ok) throw new Error('加载数据集列表失败')
+      const data = await res.json()
+      datasets.value = data || []
+      return data
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function createDataset(data) {
+    const res = await fetch(`${API_BASE}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw new Error('创建数据集失败')
+    return await res.json()
+  }
+
+  // Fetch all datasources for the dropdown
+  async function fetchDatasources() {
+    const res = await fetch(`${META_API_BASE}/datasources`)
+    if (!res.ok) throw new Error('加载数据源失败')
+    return await res.json()
+  }
+
+  // Fetch schema (tables and columns) for a specific datasource
+  async function fetchDatasourceSchema(datasourceId) {
+    const res = await fetch(`${META_API_BASE}/datasources/${datasourceId}/schema`)
+    if (!res.ok) throw new Error('加载数据源Schema失败')
+    return await res.json()
+  }
+
+  async function executeSql(datasourceId, sql) {
+    const res = await fetch(`${META_API_BASE}/datasources/${datasourceId}/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sql }),
+    })
+    if (!res.ok) {
+      const err = await res.json()
+      throw new Error(err.detail || 'SQL执行失败')
+    }
+    return await res.json()
+  }
+
+  async function fetchTableMetadata(datasourceId, tableName) {
+    const res = await fetch(`${META_API_BASE}/datasources/${datasourceId}/tables/${tableName}/metadata`)
+    if (!res.ok) throw new Error('加载元数据失败')
+    return await res.json()
+  }
+
+  return {
+    datasets,
+    loading,
+    fetchList,
+    createDataset,
+    fetchDatasources,
+    fetchDatasourceSchema,
+    executeSql,
+    fetchTableMetadata
+  }
+}

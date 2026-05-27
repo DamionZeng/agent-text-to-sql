@@ -6,6 +6,10 @@ import ChatPage from '../views/chat/ChatPage.vue'
 import DashboardList from '../views/viz/DashboardList.vue'
 import DashboardEditor from '../views/viz/DashboardEditor.vue'
 import DashboardView from '../views/viz/DashboardView.vue'
+import DatasetList from '../views/dataset/DatasetList.vue'
+import DatasetEditor from '../views/dataset/DatasetEditor.vue'
+import DataScreenList from '../views/viz/DataScreenList.vue'
+import DataScreenEditor from '../views/viz/DataScreenEditor.vue'
 
 const routes = [
   {
@@ -33,9 +37,29 @@ const routes = [
         component: DatasourceDetail
       },
       {
+        path: 'dataset/list',
+        name: 'DatasetList',
+        component: DatasetList
+      },
+      {
+        path: 'dataset/create',
+        name: 'DatasetCreate',
+        component: DatasetEditor
+      },
+      {
+        path: 'dataset/edit/:id',
+        name: 'DatasetEdit',
+        component: DatasetEditor
+      },
+      {
         path: 'viz/dashboards',
         name: 'DashboardList',
         component: DashboardList
+      },
+      {
+        path: 'viz/data-screens',
+        name: 'DataScreenList',
+        component: DataScreenList
       }
     ]
   },
@@ -48,6 +72,11 @@ const routes = [
     path: '/viz/dashboards/:id/view',
     name: 'DashboardView',
     component: DashboardView
+  },
+  {
+    path: '/viz/data-screens/:id/edit',
+    name: 'DataScreenEditor',
+    component: DataScreenEditor
   }
 ]
 
