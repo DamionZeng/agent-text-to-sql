@@ -1,5 +1,5 @@
 <template>
-  <div class="component-palette">
+  <div class="component-palette" :class="{ 'dark-theme': isDarkMode }">
     <!-- 组件库 -->
     <CollapsibleSection title="组件库" :default-expanded="true">
       <template #icon>
@@ -134,6 +134,7 @@ import CollapsibleSection from './CollapsibleSection.vue'
 const props = defineProps({
   panels: { type: Array, default: () => [] },
   selectedPanelId: { type: String, default: null },
+  isDarkMode: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['add-chart', 'select-panel', 'remove-panel'])
@@ -300,6 +301,15 @@ function onPaletteClick(item) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--color-text-secondary);
+}
+
+/* Dark theme empty state */
+.dark-theme :deep(.ant-empty-description) {
+  color: var(--color-text-secondary) !important;
+}
+.dark-theme :deep(.ant-empty-image svg path) {
+  fill: var(--color-text-tertiary) !important;
 }
 
 .header-icon {

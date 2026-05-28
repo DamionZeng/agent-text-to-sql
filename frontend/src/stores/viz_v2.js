@@ -255,6 +255,7 @@ export const useVizStore = defineStore('viz', () => {
             layout_w: panel.layout_w,
             layout_h: panel.layout_h,
             sort_order: panel.sort_order,
+            hidden: panel.hidden ?? false,
           }),
         })
         if (createRes.ok) {
@@ -276,6 +277,7 @@ export const useVizStore = defineStore('viz', () => {
             layout_w: panel.layout_w,
             layout_h: panel.layout_h,
             sort_order: panel.sort_order,
+            hidden: panel.hidden ?? false,
           }),
         })
       }

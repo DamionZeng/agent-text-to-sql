@@ -1,5 +1,5 @@
 <template>
-  <div class="panel-config-panel">
+  <div class="panel-config-panel" :class="{ 'dark-theme': isDarkMode }">
     <a-tabs v-model:activeKey="activeTab" size="small">
       <a-tab-pane key="basic" tab="基础">
         <div class="config-form">
@@ -104,6 +104,7 @@ const props = defineProps({
   panel: { type: Object, default: null },
   chartData: { type: Object, default: null },
   dashboard: { type: Object, default: null },
+  isDarkMode: { type: Boolean, default: false },
 })
 
 defineEmits(['apply', 'execute-sql'])
@@ -176,4 +177,34 @@ watch(
   justify-content: flex-end;
   gap: 8px;
 }
+
+/* Dark theme overrides for ant-design form components */
+.dark-theme :deep(.ant-tabs-nav) { margin-bottom: 0; }
+.dark-theme :deep(.ant-tabs-tab) { color: var(--color-text-secondary) !important; }
+.dark-theme :deep(.ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn) { color: var(--color-primary) !important; }
+.dark-theme :deep(.ant-tabs-ink-bar) { background: var(--color-primary); }
+.dark-theme :deep(.ant-form-item-label > label) { color: var(--color-text-secondary) !important; }
+.dark-theme :deep(.ant-input),
+.dark-theme :deep(.ant-input-number),
+.dark-theme :deep(.ant-select-selector) {
+  background: var(--color-bg-elevated) !important;
+  border-color: var(--color-border) !important;
+  color: var(--color-text-primary) !important;
+}
+.dark-theme :deep(.ant-input:hover),
+.dark-theme :deep(.ant-input-number:hover),
+.dark-theme :deep(.ant-select-selector:hover) {
+  border-color: var(--color-primary) !important;
+}
+.dark-theme :deep(.ant-input-number-input) { color: var(--color-text-primary) !important; }
+.dark-theme :deep(.ant-select-arrow) { color: var(--color-text-tertiary) !important; }
+.dark-theme :deep(.ant-select-selection-item) { color: var(--color-text-primary) !important; }
+.dark-theme :deep(.ant-select-selection-placeholder) { color: var(--color-text-tertiary) !important; }
+.dark-theme :deep(.ant-input::placeholder) { color: var(--color-text-tertiary) !important; }
+.dark-theme :deep(.ant-input-number .ant-input-number-handler-wrap) { background: var(--color-bg-elevated) !important; border-color: var(--color-border) !important; }
+.dark-theme :deep(.ant-input-number .ant-input-number-handler) { color: var(--color-text-secondary) !important; border-color: var(--color-border) !important; }
+.dark-theme :deep(.ant-btn) { color: var(--color-text-secondary) !important; }
+.dark-theme :deep(.ant-btn-primary) { color: #fff !important; }
+.dark-theme :deep(.ant-btn-primary.ghost) { color: var(--color-primary) !important; border-color: var(--color-primary) !important; }
+.dark-theme :deep(.ant-btn-text) { color: var(--color-text-secondary) !important; }
 </style>

@@ -158,7 +158,7 @@
       </div>
 
       <!-- Left Sidebar (full) -->
-      <div class="left-sidebar-panel" :class="{ 'left-hidden': leftSidebarCollapsed }">
+      <div class="left-sidebar-panel" :class="{ 'left-hidden': leftSidebarCollapsed, 'dark-theme': store.dashboard?.theme === 'dark' }">
         <div class="left-sidebar-header">
           <span class="sidebar-header-title">组件面板</span>
         </div>
@@ -166,6 +166,7 @@
           <ComponentPalette
             :panels="store.panels"
             :selected-panel-id="store.selectedPanelId"
+            :is-dark-mode="store.dashboard?.theme === 'dark'"
             @add-chart="handleAddChartFromPalette"
             @select-panel="handleLeftPanelSelect"
             @remove-panel="handleRemovePanel"
@@ -183,9 +184,15 @@
         <GlobalFilterBar :filters="store.filters" @filter-change="handleFilterChange" />
 
         <div ref="canvasElRef" class="editor-canvas" :style="canvasStyle" @drop.prevent.stop="onDrop" @dragover.prevent>
+          <div
+            v-if="dashboardConfig.showGridLines"
+            class="grid-overlay"
+            :style="gridOverlayStyle"
+          ></div>
           <GridLayout
             v-if="store.dashboard"
             v-model:layout="layoutModel"
+            :key="`grid-${dashboardConfig.gridColumns}-${dashboardConfig.gridRowHeight}`"
             :col-num="dashboardConfig.gridColumns"
             :row-height="dashboardConfig.gridRowHeight"
             :is-draggable="true"
@@ -219,7 +226,7 @@
 
       <!-- Right Config Panel -->
       <Transition name="slide-right-panel">
-        <div class="right-float-panel" v-if="store.selectedPanel && rightPanelVisible">
+        <div class="right-float-panel" :class="{ 'dark-theme': store.dashboard?.theme === 'dark' }" v-if="store.selectedPanel && rightPanelVisible">
           <div class="right-panel-header">
             <span class="right-panel-title">{{ store.selectedPanel.title || '图表配置' }}</span>
             <a-button type="text" size="small" @click="closeRightPanel"><CloseOutlined /></a-button>
@@ -229,6 +236,7 @@
               :panel="store.selectedPanel"
               :chart-data="getChartData(store.selectedPanelId)"
               :dashboard="store.dashboard"
+              :is-dark-mode="store.dashboard?.theme === 'dark'"
               @apply="handleApplyConfig"
               @execute-sql="handleExecuteSql"
             />
@@ -371,13 +379,14 @@ const dashboardConfig = reactive({
   backgroundColor: '#FFFFFF',
   backgroundOpacity: 1,
   backgroundImage: '',
+  backgroundSize: 'cover',
   showGridLines: false,
   gridColumns: 12,
   gridRowHeight: 100,
 })
 
-// Hidden panels
-const hiddenPanels = ref([])
+// Hidden panels - computed from store
+const hiddenPanels = computed(() => store.panels.filter(p => p.hidden))
 
 // Save notification
 const saveNotifyVisible = ref(false)
@@ -387,12 +396,87 @@ const saveNotifyTimer = ref(null)
 const canUndo = computed(() => snapshot.canUndo.value)
 const canRedo = computed(() => snapshot.canRedo.value)
 
-const canvasStyle = computed(() => ({
-  backgroundColor: dashboardConfig.backgroundColor,
-  opacity: dashboardConfig.backgroundOpacity,
-  backgroundImage: dashboardConfig.backgroundImage ? url() : undefined,
-  backgroundSize: dashboardConfig.backgroundImage ? 'cover' : undefined,
-}))
+const canvasStyle = computed(() => {
+  const bgColor = applyOpacityToColor(dashboardConfig.backgroundColor, dashboardConfig.backgroundOpacity)
+  const style = {
+    backgroundColor: bgColor,
+    backgroundRepeat: 'no-repeat',
+    backgroundPosition: 'center',
+  }
+  if (dashboardConfig.backgroundImage) {
+    style.backgroundImage = `url(${dashboardConfig.backgroundImage})`
+    style.backgroundSize = dashboardConfig.backgroundSize || 'cover'
+  }
+  return style
+})
+
+const gridOverlayStyle = computed(() => {
+  const cols = dashboardConfig.gridColumns
+  const rowH = dashboardConfig.gridRowHeight
+  return {
+    backgroundImage: [
+      `linear-gradient(to right, rgba(148,163,184,0.15) 1px, transparent 1px)`,
+      `linear-gradient(to bottom, rgba(148,163,184,0.15) 1px, transparent 1px)`,
+    ].join(', '),
+    backgroundSize: `${100 / cols}% ${rowH}px, 100% ${rowH}px`,
+    backgroundRepeat: 'no-repeat, no-repeat',
+    backgroundPosition: 'top left',
+  }
+})
+
+function applyOpacityToColor(color, opacity) {
+  if (opacity >= 1) return color
+  if (color.startsWith('rgba')) {
+    return color.replace(/[\d.]+\)$/, `${opacity})`)
+  }
+  if (color.startsWith('rgb')) {
+    return color.replace('rgb', 'rgba').replace(')', `, ${opacity})`)
+  }
+  if (color.startsWith('#')) {
+    const hex = color.replace('#', '')
+    let r, g, b
+    if (hex.length === 3) {
+      r = parseInt(hex[0] + hex[0], 16)
+      g = parseInt(hex[1] + hex[1], 16)
+      b = parseInt(hex[2] + hex[2], 16)
+    } else {
+      r = parseInt(hex.substring(0, 2), 16)
+      g = parseInt(hex.substring(2, 4), 16)
+      b = parseInt(hex.substring(4, 6), 16)
+    }
+    return `rgba(${r}, ${g}, ${b}, ${opacity})`
+  }
+  return color
+}
+
+function loadDashboardConfig(d) {
+  const lc = d.layout_config || {}
+  dashboardConfig.canvasAdaption = lc.canvas_adaption || 'width'
+  dashboardConfig.canvasWidth = lc.canvas_width || 1920
+  dashboardConfig.canvasHeight = lc.canvas_height || 1080
+  dashboardConfig.backgroundColor = lc.background_color || '#FFFFFF'
+  dashboardConfig.backgroundOpacity = lc.background_opacity ?? 1
+  dashboardConfig.backgroundImage = lc.background_image || ''
+  dashboardConfig.backgroundSize = lc.background_size || 'cover'
+  dashboardConfig.showGridLines = lc.show_grid_lines ?? false
+  dashboardConfig.gridColumns = lc.grid_columns || 12
+  dashboardConfig.gridRowHeight = lc.grid_row_height || 100
+}
+
+function buildLayoutConfig() {
+  return {
+    canvas_adaption: dashboardConfig.canvasAdaption,
+    canvas_width: dashboardConfig.canvasWidth,
+    canvas_height: dashboardConfig.canvasHeight,
+    background_color: dashboardConfig.backgroundColor,
+    background_opacity: dashboardConfig.backgroundOpacity,
+    background_image: dashboardConfig.backgroundImage,
+    background_size: dashboardConfig.backgroundSize,
+    show_grid_lines: dashboardConfig.showGridLines,
+    grid_columns: dashboardConfig.gridColumns,
+    grid_row_height: dashboardConfig.gridRowHeight,
+  }
+}
 
 // ─── Save Notification ────────────────────────────
 function showSaveNotification() {
@@ -429,18 +513,10 @@ onMounted(async () => {
     await store.loadDashboard(id)
     editorName.value = store.dashboard?.name || ''
     snapshot.initSnapshot(store.panels, store.filters)
-    // Load dashboard config
+    // Load dashboard config from layout_config
     const d = store.dashboard
     if (d) {
-      dashboardConfig.canvasAdaption = d.canvas_adaption || 'width'
-      dashboardConfig.canvasWidth = d.canvas_width || 1920
-      dashboardConfig.canvasHeight = d.canvas_height || 1080
-      dashboardConfig.backgroundColor = d.background_color || '#FFFFFF'
-      dashboardConfig.backgroundOpacity = d.background_opacity ?? 1
-      dashboardConfig.backgroundImage = d.background_image || ''
-      dashboardConfig.showGridLines = d.show_grid_lines ?? false
-      dashboardConfig.gridColumns = d.grid_columns || 12
-      dashboardConfig.gridRowHeight = d.grid_row_height || 100
+      loadDashboardConfig(d)
     }
   }
   startAutoSave()
@@ -565,33 +641,23 @@ function openMobileConfig() {
 
 function previewFullscreen() {
   if (store.dashboard) {
-    const url = router.resolve(`/viz/dashboards/${store.dashboard.id}/view`).href
-    window.open(url, '_blank', 'fullscreen=yes')
+    router.push(`/viz/dashboards/${store.dashboard.id}/view`)
   }
 }
 
 function previewNewPage() {
   if (store.dashboard) {
-    router.push(`/viz/dashboards/${store.dashboard.id}/view`)
+    const url = router.resolve(`/viz/dashboards/${store.dashboard.id}/view`).href
+    window.open(url, '_blank')
   }
 }
 
 async function performSave() {
   try {
-    if (editorName.value) {
-      store.updateDashboardLocal({
-        name: editorName.value,
-        canvas_adaption: dashboardConfig.canvasAdaption,
-        canvas_width: dashboardConfig.canvasWidth,
-        canvas_height: dashboardConfig.canvasHeight,
-        background_color: dashboardConfig.backgroundColor,
-        background_opacity: dashboardConfig.backgroundOpacity,
-        background_image: dashboardConfig.backgroundImage,
-        show_grid_lines: dashboardConfig.showGridLines,
-        grid_columns: dashboardConfig.gridColumns,
-        grid_row_height: dashboardConfig.gridRowHeight,
-      })
-    }
+    store.updateDashboardLocal({
+      name: editorName.value || store.dashboard?.name || '未命名仪表板',
+      layout_config: buildLayoutConfig(),
+    })
     await store.saveAll()
     takeSnapshot()
     showSaveNotification()
@@ -805,18 +871,11 @@ function handleContextAction(action) {
 }
 
 function handleHidePanel(panelId) {
-  const panel = store.panels.find(p => p.id === panelId)
-  if (!panel) return
   store.updatePanelConfigLocal(panelId, { hidden: true })
-  hiddenPanels.value.push(panel)
 }
 
 function handleRestoreHidden(panelId) {
-  const panel = hiddenPanels.value.find(p => p.id === panelId)
-  if (panel) {
-    panel.hidden = false
-    hiddenPanels.value = hiddenPanels.value.filter(p => p.id !== panelId)
-  }
+  store.updatePanelConfigLocal(panelId, { hidden: false })
 }
 
 // ─── Config Panel ─────────────────────────────────
@@ -852,6 +911,11 @@ function handleFilterChange(filterEvent) {
 // ─── Dashboard Config ─────────────────────────────
 function handleDashboardConfigApply(config) {
   Object.assign(dashboardConfig, config)
+  if (store.dashboard) {
+    store.updateDashboardLocal({
+      layout_config: buildLayoutConfig(),
+    })
+  }
 }
 
 // ─── Multiplexing (Component Reuse) ───────────────
@@ -981,9 +1045,6 @@ watch(() => store.panels.filter(p => p.hidden).length, () => {
   gap: 4px;
   user-select: none;
 }
-.dark-theme .editor-toolbar { background: var(--color-sidebar-hover); border-color: rgba(255,255,255,0.06); }
-.dark-theme .editor-toolbar .tb-btn { color: rgba(255,255,255,0.65); }
-.dark-theme .editor-toolbar .tb-btn:hover { color: rgba(255,255,255,0.9); background: rgba(255,255,255,0.08); }
 
 .tb-left, .tb-right { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .tb-middle { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; }
@@ -1011,12 +1072,12 @@ watch(() => store.panels.filter(p => p.hidden).length, () => {
   display: flex; align-items: center; gap: 6px;
   cursor: pointer; padding: 2px 8px; border-radius: var(--radius-sm);
   transition: background var(--transition-fast); font-size: 14px; font-weight: 600;
+  color: var(--color-text-primary);
 }
 .name-display:hover { background: rgba(0,0,0,0.04); }
-.dark-theme .name-display:hover { background: rgba(255,255,255,0.06); }
+.dark-theme .name-display:hover { background: rgba(148,163,184,0.10); }
 .name-edit-icon { font-size: 13px; color: var(--color-text-tertiary); }
 .name-input { width: 200px; font-size: 14px; font-weight: 600; }
-.dark-theme .name-input { background: transparent; color: var(--color-text-inverse); }
 
 /* ─── Batch Toolbar ──────────────────────────────── */
 .batch-toolbar {
@@ -1026,7 +1087,6 @@ watch(() => store.panels.filter(p => p.hidden).length, () => {
   border-bottom: 1px solid var(--color-primary);
   flex-shrink: 0;
 }
-.dark-theme .batch-toolbar { background: rgba(79,70,229,0.15); border-color: rgba(79,70,229,0.3); }
 .batch-info { font-size: 13px; font-weight: 500; color: var(--color-primary); margin-right: auto; }
 
 /* ─── Editor Body ────────────────────────────────── */
@@ -1042,16 +1102,14 @@ watch(() => store.panels.filter(p => p.hidden).length, () => {
   flex-shrink: 0; z-index: 50;
   transition: width 0.2s;
 }
-.dark-theme .left-mini-dock { background: var(--color-sidebar-hover); border-color: rgba(255,255,255,0.06); }
 .mini-dock-icon {
   width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
   border-radius: var(--radius-sm); cursor: pointer; font-size: 16px;
   color: var(--color-text-tertiary); transition: all var(--transition-fast);
 }
-.mini-dock-icon:hover { background: rgba(0,0,0,0.05); color: var(--color-text-primary); }
-.dark-theme .mini-dock-icon:hover { background: rgba(255,255,255,0.08); color: var(--color-text-inverse); }
+.mini-dock-icon:hover { color: var(--color-text-primary); }
+.dark-theme .mini-dock-icon:hover { background: rgba(148,163,184,0.12); }
 .mini-dock-divider { width: 20px; height: 1px; background: var(--color-border); margin: 6px 0; }
-.dark-theme .mini-dock-divider { background: rgba(255,255,255,0.08); }
 .mini-dock-bottom { margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 4px; }
 
 /* ─── Left Sidebar ───────────────────────────────── */
@@ -1061,39 +1119,42 @@ watch(() => store.panels.filter(p => p.hidden).length, () => {
   background: var(--color-bg-surface); flex-shrink: 0;
   transition: width 0.25s ease, opacity 0.2s; overflow: hidden;
 }
-.dark-theme .left-sidebar-panel { background: var(--color-sidebar-hover); border-color: rgba(255,255,255,0.06); }
 .left-sidebar-panel.left-hidden { width: 0; opacity: 0; padding: 0; border: none; }
 .left-sidebar-header {
   display: flex; align-items: center; padding: 10px 14px;
   border-bottom: 1px solid var(--color-border-light);
   flex-shrink: 0; background: var(--color-bg-surface);
 }
-.dark-theme .left-sidebar-header { border-color: rgba(255,255,255,0.06); background: var(--color-sidebar-hover); }
 .sidebar-header-title { font-size: 14px; font-weight: 600; color: var(--color-text-primary); }
-.dark-theme .sidebar-header-title { color: rgba(255,255,255,0.85); }
 .left-sidebar-inner { flex: 1; overflow-y: auto; }
 .sidebar-bottom-toggle { display: flex; justify-content: flex-end; padding: 4px; border-top: 1px solid var(--color-border-light); }
-.dark-theme .sidebar-bottom-toggle { border-color: rgba(255,255,255,0.06); }
 .bottom-toggle-btn {
   width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
   cursor: pointer; border-radius: var(--radius-sm); color: var(--color-text-tertiary); font-size: 12px;
   transition: all var(--transition-fast);
 }
-.bottom-toggle-btn:hover { background: rgba(0,0,0,0.05); }
-.dark-theme .bottom-toggle-btn:hover { background: rgba(255,255,255,0.08); }
+.dark-theme .bottom-toggle-btn:hover { background: rgba(148,163,184,0.12); }
 
 /* ─── Canvas ─────────────────────────────────────── */
 .editor-canvas-wrapper {
   flex: 1; display: flex; flex-direction: column; overflow: hidden;
   background: var(--color-bg-page);
 }
-.dark-theme .editor-canvas-wrapper { background: var(--color-sidebar-bg); }
 .editor-canvas {
   flex: 1; overflow: auto; padding: 16px;
   background-repeat: no-repeat; background-position: center;
   min-height: 400px;
+  position: relative;
 }
-
+.grid-overlay {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  pointer-events: none;
+  z-index: 100;
+}
 
 /* ─── Right Config Panel ─────────────────────────── */
 .right-float-panel {
@@ -1102,13 +1163,11 @@ watch(() => store.panels.filter(p => p.hidden).length, () => {
   background: var(--color-bg-surface); flex-shrink: 0;
   z-index: 30; overflow: hidden;
 }
-.dark-theme .right-float-panel { background: var(--color-sidebar-hover); border-color: rgba(255,255,255,0.06); }
 .right-panel-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 14px; border-bottom: 1px solid var(--color-border-light); flex-shrink: 0;
 }
-.dark-theme .right-panel-header { border-color: rgba(255,255,255,0.06); }
-.right-panel-title { font-size: 14px; font-weight: 600; }
+.right-panel-title { font-size: 14px; font-weight: 600; color: var(--color-text-primary); }
 .right-panel-body { flex: 1; overflow-y: auto; }
 
 /* ─── Transitions ────────────────────────────────── */
@@ -1122,31 +1181,24 @@ watch(() => store.panels.filter(p => p.hidden).length, () => {
   flex: 1; display: flex; align-items: center; justify-content: center;
   background: var(--color-bg-page);
 }
-.dark-theme .ai-progress-overlay { background: var(--color-sidebar-bg); }
 .ai-progress-card {
   background: var(--color-bg-surface); border-radius: 12px; padding: 32px 40px;
-  min-width: 560px; max-width: 700px; box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+  min-width: 560px; max-width: 700px; box-shadow: var(--shadow-lg);
 }
-.dark-theme .ai-progress-card { background: var(--color-sidebar-hover); box-shadow: 0 4px 24px rgba(0,0,0,0.3); }
 .ai-progress-title { margin: 0 0 24px; font-size: 18px; font-weight: 600; color: var(--color-text-primary); text-align: center; }
-.dark-theme .ai-progress-title { color: rgba(255,255,255,0.9); }
 .ai-flow { display: flex; align-items: center; justify-content: center; gap: 0; margin-bottom: 20px; flex-wrap: wrap; }
-.flow-stage { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 14px; border-radius: 8px; min-width: 70px; border: 2px solid transparent; background: rgba(0,0,0,0.02); transition: all 0.25s ease; }
-.dark-theme .flow-stage { background: rgba(255,255,255,0.03); }
-.flow-stage-icon { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; background: rgba(0,0,0,0.06); color: var(--color-text-tertiary); transition: all 0.25s ease; }
-.dark-theme .flow-stage-icon { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.35); }
-.stage-running { background: rgba(79,70,229,0.08); border-color: var(--color-primary); box-shadow: 0 0 12px rgba(79,70,229,0.2); }
-.dark-theme .stage-running { background: rgba(129,140,248,0.12); border-color: #818cf8; box-shadow: 0 0 16px rgba(129,140,248,0.25); }
+.flow-stage { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 14px; border-radius: 8px; min-width: 70px; border: 2px solid transparent; background: var(--color-bg-surface); transition: all 0.25s ease; }
+.flow-stage-icon { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; background: var(--color-bg-elevated); color: var(--color-text-tertiary); transition: all 0.25s ease; }
+.stage-running { background: var(--color-primary-light); border-color: var(--color-primary); box-shadow: 0 0 12px rgba(99,102,241,0.2); }
 .stage-running .flow-stage-icon { background: var(--color-primary); color: #fff; }
-.stage-success { background: rgba(82,196,26,0.04); border-color: rgba(82,196,26,0.2); }
-.stage-success .flow-stage-icon { background: #52c41a; color: #fff; }
-.stage-error { background: rgba(255,77,79,0.06); border-color: rgba(255,77,79,0.3); }
-.stage-error .flow-stage-icon { background: #ff4d4f; color: #fff; }
+.stage-success { background: var(--color-success-light); border-color: var(--color-success); }
+.stage-success .flow-stage-icon { background: var(--color-success); color: #fff; }
+.stage-error { background: var(--color-error-light); border-color: var(--color-error); }
+.stage-error .flow-stage-icon { background: var(--color-error); color: #fff; }
 .flow-stage-label { font-size: 13px; font-weight: 500; color: var(--color-text-secondary); white-space: nowrap; }
 .stage-running .flow-stage-label { color: var(--color-primary); font-weight: 600; }
-.stage-success .flow-stage-label { color: #52c41a; }
+.stage-success .flow-stage-label { color: var(--color-success); }
 .flow-arrow { display: flex; align-items: center; padding: 0 4px; font-size: 16px; color: var(--color-text-tertiary); margin-top: 8px; }
-.dark-theme .flow-arrow { color: rgba(255,255,255,0.25); }
 .ai-progress-status { text-align: center; margin-top: 12px; font-size: 13px; color: var(--color-text-secondary); }
 
 /* ─── Save Notification ──────────────────────────── */
@@ -1196,10 +1248,39 @@ watch(() => store.panels.filter(p => p.hidden).length, () => {
   transform: translateX(-50%) translateY(-12px);
 }
 
-/* ─── Dark Theme Overrides ───────────────────────── */
-.dark-theme .name-display { color: var(--color-text-inverse); }
-.dark-theme .name-edit-icon { color: rgba(255,255,255,0.4); }
-.dark-theme .editor-canvas-wrapper :deep(.panel-card) { background: var(--color-sidebar-hover); }
-.dark-theme .editor-canvas-wrapper :deep(.chart-title) { color: rgba(255,255,255,0.85); }
-.dark-theme .editor-canvas-wrapper :deep(.chart-type-tag) { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.5); }
+</style>
+
+<style>
+.dashboard-editor.dark-theme {
+  --color-bg-page: #0B1121;
+  --color-bg-surface: #1A2133;
+  --color-bg-elevated: #242D40;
+  --color-border: #2D3648;
+  --color-border-light: #242D40;
+  --color-text-primary: #E8ECF1;
+  --color-text-secondary: #A1AAB8;
+  --color-text-tertiary: #6B7587;
+  --color-text-inverse: #0B1121;
+  --color-primary: #818CF8;
+  --color-primary-hover: #6366F1;
+  --color-primary-active: #4F46E5;
+  --color-primary-light: rgba(99,102,241,0.16);
+  --color-primary-bg: rgba(99,102,241,0.08);
+  --color-secondary: #94A3B8;
+  --color-secondary-light: rgba(148,163,184,0.12);
+  --color-accent: #22D3EE;
+  --color-accent-hover: #06B6D4;
+  --color-accent-light: rgba(34,211,238,0.12);
+  --color-success: #34D399;
+  --color-success-light: rgba(52,211,153,0.12);
+  --color-warning: #FBBF24;
+  --color-warning-light: rgba(251,191,36,0.12);
+  --color-error: #F87171;
+  --color-error-light: rgba(248,113,113,0.12);
+  --color-info: #60A5FA;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.5);
+  --shadow-xl: 0 16px 48px rgba(0,0,0,0.6);
+}
 </style>

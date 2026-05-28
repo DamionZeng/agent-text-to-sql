@@ -47,9 +47,6 @@ function toggle() {
 .collapsible-section {
   border-bottom: 1px solid var(--color-border-light);
 }
-.dark-theme .collapsible-section {
-  border-color: rgba(255, 255, 255, 0.06);
-}
 
 .section-header {
   display: flex;

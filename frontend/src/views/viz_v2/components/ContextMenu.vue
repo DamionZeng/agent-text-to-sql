@@ -43,27 +43,29 @@ onUnmounted(() => {
 <style scoped>
 .context-menu {
   position: absolute;
-  background: #2b2b2b;
-  border: 1px solid #444;
-  border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  background: var(--color-bg-elevated, #242D40);
+  border: 1px solid var(--color-border, #2D3648);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
   padding: 4px 0;
   z-index: 9999;
   min-width: 150px;
-  color: #e0e0e0;
+  color: var(--color-text-primary);
   font-size: 13px;
 }
 .menu-item {
   padding: 8px 16px;
   cursor: pointer;
+  color: var(--color-text-secondary);
+  transition: all 0.12s;
 }
 .menu-item:hover {
-  background: #1890ff;
+  background: var(--color-primary);
   color: #fff;
 }
 .menu-divider {
   height: 1px;
-  background: #444;
+  background: var(--color-border);
   margin: 4px 0;
 }
 </style>
