@@ -1,5 +1,13 @@
 ﻿<template>
   <div class="dashboard-editor" :class="{ 'dark-theme': store.dashboard?.theme === 'dark' }">
+    <!-- ========== Save Notification ========== -->
+    <Transition name="save-notify">
+      <div v-if="saveNotifyVisible" class="save-notification">
+        <CheckCircleOutlined class="save-notify-icon" />
+        <span class="save-notify-text">保存成功</span>
+      </div>
+    </Transition>
+
     <!-- ========== DbToolbar: Full Toolbar ========== -->
     <div class="editor-toolbar">
       <!-- Left Section -->
@@ -256,7 +264,7 @@
   </div>
 </template>
 <script setup>
-import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
   ArrowLeftOutlined, EditOutlined, UndoOutlined, RedoOutlined,
@@ -368,6 +376,10 @@ const dashboardConfig = reactive({
 // Hidden panels
 const hiddenPanels = ref([])
 
+// Save notification
+const saveNotifyVisible = ref(false)
+const saveNotifyTimer = ref(null)
+
 // Computed
 const canUndo = computed(() => snapshot.canUndo.value)
 const canRedo = computed(() => snapshot.canRedo.value)
@@ -378,6 +390,34 @@ const canvasStyle = computed(() => ({
   backgroundImage: dashboardConfig.backgroundImage ? url() : undefined,
   backgroundSize: dashboardConfig.backgroundImage ? 'cover' : undefined,
 }))
+
+// ─── Save Notification ────────────────────────────
+function showSaveNotification() {
+  saveNotifyVisible.value = true
+  if (saveNotifyTimer.value) clearTimeout(saveNotifyTimer.value)
+  saveNotifyTimer.value = setTimeout(() => {
+    saveNotifyVisible.value = false
+  }, 2000)
+}
+
+// ─── Auto Save Timer ──────────────────────────────
+let autoSaveTimer = null
+
+function startAutoSave() {
+  if (autoSaveTimer) clearInterval(autoSaveTimer)
+  autoSaveTimer = setInterval(() => {
+    if (store.dashboard && !isEditingName.value && store.pendingChanges) {
+      performSave()
+    }
+  }, 30000)
+}
+
+function stopAutoSave() {
+  if (autoSaveTimer) {
+    clearInterval(autoSaveTimer)
+    autoSaveTimer = null
+  }
+}
 
 // ─── Lifecycle ────────────────────────────────────
 onMounted(async () => {
@@ -400,6 +440,12 @@ onMounted(async () => {
       dashboardConfig.gridRowHeight = d.grid_row_height || 100
     }
   }
+  startAutoSave()
+})
+
+onUnmounted(() => {
+  stopAutoSave()
+  if (saveNotifyTimer.value) clearTimeout(saveNotifyTimer.value)
 })
 
 // ─── Layout Helpers ───────────────────────────────
@@ -454,76 +500,32 @@ function startEditName() {
 }
 function finishEditName() { isEditingName.value = false }
 
-async function openChartSelector() {
+function openChartSelector() {
   if (!store.dashboard) return
-  try {
-    const panel = await store.addPanel(store.dashboard.id, null, '柱状图', { x: 0, y: 0, w: 6, h: 4 }, 'bar')
-    if (panel) { panel._chartType = 'bar'; panel.chart_type = 'bar' }
-    takeSnapshot()
-  } catch (e) {
-    store.panels.push({
-      id: 'temp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
-      title: '柱状图', _chartType: 'bar', chart_type: 'bar',
-      layout_x: 0, layout_y: 0, layout_w: 6, layout_h: 4,
-      hidden: false, chart_config_id: null,
-    })
-    takeSnapshot()
-  }
+  store.addPanelLocal(null, '柱状图', { x: 0, y: 0, w: 6, h: 4 }, 'bar')
+  takeSnapshot()
 }
 
 function openFilterDialog() {
   console.log('打开过滤控件配置')
 }
 
-async function addTextComponent() {
+function addTextComponent() {
   if (!store.dashboard) return
-  try {
-    const panel = await store.addPanel(store.dashboard.id, null, '文本', { x: 0, y: 0, w: 4, h: 2 }, 'text')
-    if (panel) { panel._chartType = 'text'; panel.chart_type = 'text' }
-    takeSnapshot()
-  } catch (e) {
-    store.panels.push({
-      id: 'temp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
-      title: '文本', _chartType: 'text', chart_type: 'text',
-      layout_x: 0, layout_y: 0, layout_w: 4, layout_h: 2,
-      hidden: false, chart_config_id: null,
-    })
-    takeSnapshot()
-  }
+  store.addPanelLocal(null, '文本', { x: 0, y: 0, w: 4, h: 2 }, 'text')
+  takeSnapshot()
 }
 
-async function openMediaDialog() {
+function openMediaDialog() {
   if (!store.dashboard) return
-  try {
-    const panel = await store.addPanel(store.dashboard.id, null, '图片', { x: 0, y: 0, w: 6, h: 5 }, 'image')
-    if (panel) { panel._chartType = 'image'; panel.chart_type = 'image' }
-    takeSnapshot()
-  } catch (e) {
-    store.panels.push({
-      id: 'temp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
-      title: '图片', _chartType: 'image', chart_type: 'image',
-      layout_x: 0, layout_y: 0, layout_w: 6, layout_h: 5,
-      hidden: false, chart_config_id: null,
-    })
-    takeSnapshot()
-  }
+  store.addPanelLocal(null, '图片', { x: 0, y: 0, w: 6, h: 5 }, 'image')
+  takeSnapshot()
 }
 
-async function addContainer() {
+function addContainer() {
   if (!store.dashboard) return
-  try {
-    const panel = await store.addPanel(store.dashboard.id, null, '容器', { x: 0, y: 0, w: 12, h: 6 }, 'container')
-    if (panel) { panel._chartType = 'container'; panel.chart_type = 'container' }
-    takeSnapshot()
-  } catch (e) {
-    store.panels.push({
-      id: 'temp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
-      title: '容器', _chartType: 'container', chart_type: 'container',
-      layout_x: 0, layout_y: 0, layout_w: 12, layout_h: 6,
-      hidden: false, chart_config_id: null,
-    })
-    takeSnapshot()
-  }
+  store.addPanelLocal(null, '容器', { x: 0, y: 0, w: 12, h: 6 }, 'container')
+  takeSnapshot()
 }
 
 function openMultiplexing() {
@@ -571,10 +573,10 @@ function previewNewPage() {
   }
 }
 
-async function handleSave() {
+async function performSave() {
   try {
     if (editorName.value) {
-      await store.saveDashboard({
+      store.updateDashboardLocal({
         name: editorName.value,
         canvas_adaption: dashboardConfig.canvasAdaption,
         canvas_width: dashboardConfig.canvasWidth,
@@ -587,9 +589,16 @@ async function handleSave() {
         grid_row_height: dashboardConfig.gridRowHeight,
       })
     }
-    await store.updateLayout(layoutModel.value)
+    await store.saveAll()
     takeSnapshot()
-  } catch (e) { console.error('保存失败', e) }
+    showSaveNotification()
+  } catch (e) {
+    console.error('保存失败', e)
+  }
+}
+
+function handleSave() {
+  performSave()
 }
 
 async function handlePublish() {
@@ -661,60 +670,36 @@ function onEditPanel(panelId) {
   showRightPanel()
 }
 
-async function handleAddChartFromPalette(chartType) {
+function handleAddChartFromPalette(chartType) {
   if (!store.dashboard) return
-  
   const title = chartTypeNames[chartType] || chartType || '图表'
-  
-  try {
-    const panel = await store.addPanel(store.dashboard.id, null, title, { x: 0, y: 0, w: 6, h: 4 }, chartType)
-    if (panel) { panel._chartType = chartType; panel.chart_type = chartType }
-    takeSnapshot()
-  } catch (e) {
-    console.error('添加面板失败', e)
-    const tempId = 'temp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
-    store.panels.push({
-      id: tempId,
-      title,
-      _chartType: chartType,
-      chart_type: chartType,
-      layout_x: 0, layout_y: 0, layout_w: 6, layout_h: 4,
-      hidden: false,
-      chart_config_id: null,
-    })
-    takeSnapshot()
-  }
+  store.addPanelLocal(null, title, { x: 0, y: 0, w: 6, h: 4 }, chartType)
+  takeSnapshot()
 }
 
-async function handleRemovePanel(panelId) {
+function handleRemovePanel(panelId) {
   if (!store.dashboard) return
-  try {
-    await store.removePanel(store.dashboard.id, panelId)
-    delete chartDataCache.value[panelId]
-    selectedBatchIds.value = selectedBatchIds.value.filter(id => id !== panelId)
-    takeSnapshot()
-  } catch (e) {
-    console.error('删除面板失败', e)
-  }
+  store.removePanelLocal(panelId)
+  delete chartDataCache.value[panelId]
+  selectedBatchIds.value = selectedBatchIds.value.filter(id => id !== panelId)
+  takeSnapshot()
 }
 
-async function handleCopyPanel(panelId) {
+function handleCopyPanel(panelId) {
   const panel = store.panels.find(p => p.id === panelId)
   if (!panel || !store.dashboard) return
-  try {
-    const ct = panel._chartType || panel.chart_type
-    const copied = await store.addPanel(store.dashboard.id, panel.chart_config_id, (panel.title || '图表') + ' (副本)', {
-      x: (panel.layout_x || 0) + 1,
-      y: (panel.layout_y || 0) + 1,
-      w: panel.layout_w || 6,
-      h: panel.layout_h || 4,
-    }, ct)
-    if (copied) {
-      copied._chartType = ct
-      copied.chart_type = ct
-    }
-    takeSnapshot()
-  } catch (e) { console.error('复制面板失败', e) }
+  const ct = panel._chartType || panel.chart_type
+  const copied = store.addPanelLocal(panel.chart_config_id, (panel.title || '图表') + ' (副本)', {
+    x: (panel.layout_x || 0) + 1,
+    y: (panel.layout_y || 0) + 1,
+    w: panel.layout_w || 6,
+    h: panel.layout_h || 4,
+  }, ct)
+  if (copied) {
+    copied._chartType = ct
+    copied.chart_type = ct
+  }
+  takeSnapshot()
 }
 
 function handleBringToFront(panelId) {
@@ -737,7 +722,7 @@ function handleSendToBack(panelId) {
 
 // ─── Layout Events ────────────────────────────────
 function onLayoutUpdated(newLayout) {
-  store.updateLayout(newLayout).catch(() => {})
+  store.updateLayoutLocal(newLayout)
 }
 
 function calcDropGridXY(clientX, clientY) {
@@ -761,32 +746,15 @@ function calcDropGridXY(clientX, clientY) {
   return { x: col, y: row }
 }
 
-async function onDrop(event) {
+function onDrop(event) {
   const chartType = event.dataTransfer.getData('chartType')
   if (!chartType || !store.dashboard) return
 
   const { x, y } = calcDropGridXY(event.clientX, event.clientY)
 
   const title = chartTypeNames[chartType] || chartType || '图表'
-  
-  try {
-    const panel = await store.addPanel(store.dashboard.id, null, title, { x, y, w: 6, h: 4 }, chartType)
-    if (panel) { panel._chartType = chartType; panel.chart_type = chartType }
-    takeSnapshot()
-  } catch (e) {
-    console.error('添加面板失败', e)
-    const tempId = 'temp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
-    store.panels.push({
-      id: tempId,
-      title,
-      _chartType: chartType,
-      chart_type: chartType,
-      layout_x: x, layout_y: y, layout_w: 6, layout_h: 4,
-      hidden: false,
-      chart_config_id: null,
-    })
-    takeSnapshot()
-  }
+  store.addPanelLocal(null, title, { x, y, w: 6, h: 4 }, chartType)
+  takeSnapshot()
 }
 
 // ─── Batch Operations ─────────────────────────────
@@ -833,12 +801,11 @@ function handleContextAction(action) {
   contextMenuVisible.value = false
 }
 
-async function handleHidePanel(panelId) {
+function handleHidePanel(panelId) {
   const panel = store.panels.find(p => p.id === panelId)
   if (!panel) return
-  panel.hidden = true
+  store.updatePanelConfigLocal(panelId, { hidden: true })
   hiddenPanels.value.push(panel)
-  await store.updatePanelConfig(panelId, { hidden: true })
 }
 
 function handleRestoreHidden(panelId) {
@@ -850,38 +817,24 @@ function handleRestoreHidden(panelId) {
 }
 
 // ─── Config Panel ─────────────────────────────────
-async function handleApplyConfig(formData) {
+function handleApplyConfig(formData) {
   if (!store.selectedPanel) return
   const panelId = store.selectedPanelId
-  const panel = store.selectedPanel
-  try {
-    await store.updatePanelConfig(panelId, {
-      title: formData.title,
-      layout_x: formData.layout_x,
-      layout_y: formData.layout_y,
-      layout_w: formData.layout_w,
-      layout_h: formData.layout_h,
-      sort_order: formData.sort_order,
-      chart_type: formData.chartType,
-    })
-    const updatedPanel = store.panels.find(p => p.id === panelId)
-    if (updatedPanel) {
-      updatedPanel._chartType = formData.chartType
-      updatedPanel.chart_type = formData.chartType
-    }
-    if (panel.chart_config_id) {
-      await store.updateChartConfig(panel.chart_config_id, {
-        chart_type: formData.chartType,
-        sql_text: formData.sql_text,
-      })
-    }
-    chartDataCache.value[panelId] = {
-      chart_type: formData.chartType || 'bar',
-      sql_text: formData.sql_text || '',
-      echarts_option: chartDataCache.value[panelId]?.echarts_option || {},
-    }
-    takeSnapshot()
-  } catch (e) { console.error('应用配置失败', e) }
+  store.updatePanelConfigLocal(panelId, {
+    title: formData.title,
+    layout_x: formData.layout_x,
+    layout_y: formData.layout_y,
+    layout_w: formData.layout_w,
+    layout_h: formData.layout_h,
+    sort_order: formData.sort_order,
+    chart_type: formData.chartType,
+  })
+  chartDataCache.value[panelId] = {
+    chart_type: formData.chartType || 'bar',
+    sql_text: formData.sql_text || '',
+    echarts_option: chartDataCache.value[panelId]?.echarts_option || {},
+  }
+  takeSnapshot()
 }
 
 function handleExecuteSql() {
@@ -908,7 +861,7 @@ async function handleMultiplexingConfirm({ dashboardId, panelId }) {
     const sourcePanel = (data.panels || []).find(p => p.id === panelId)
     if (sourcePanel) {
       const ct = sourcePanel._chartType || sourcePanel.chart_type
-      const copied = await store.addPanel(store.dashboard.id, sourcePanel.chart_config_id,
+      const copied = store.addPanelLocal(sourcePanel.chart_config_id,
         (sourcePanel.title || '图表') + ' (复用)', {
         x: 0, y: 0, w: sourcePanel.layout_w || 6, h: sourcePanel.layout_h || 4,
       }, ct)
@@ -1184,6 +1137,53 @@ watch(() => store.panels.filter(p => p.hidden).length, () => {
 .flow-arrow { display: flex; align-items: center; padding: 0 4px; font-size: 16px; color: var(--color-text-tertiary); margin-top: 8px; }
 .dark-theme .flow-arrow { color: rgba(255,255,255,0.25); }
 .ai-progress-status { text-align: center; margin-top: 12px; font-size: 13px; color: var(--color-text-secondary); }
+
+/* ─── Save Notification ──────────────────────────── */
+.save-notification {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(82, 196, 26, 0.3);
+  border-radius: 20px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(82, 196, 26, 0.1);
+  backdrop-filter: blur(8px);
+  font-size: 13px;
+  font-weight: 500;
+  color: #52c41a;
+  letter-spacing: 0.5px;
+}
+.dark-theme .save-notification {
+  background: rgba(30, 30, 35, 0.95);
+  border-color: rgba(82, 196, 26, 0.4);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(82, 196, 26, 0.15);
+}
+.save-notify-icon {
+  font-size: 14px;
+  color: #52c41a;
+}
+.save-notify-text {
+  font-size: 13px;
+}
+
+/* Save notification transition */
+.save-notify-enter-active {
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.save-notify-leave-active {
+  transition: all 0.3s cubic-bezier(0.7, 0, 0.84, 0);
+}
+.save-notify-enter-from,
+.save-notify-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-12px);
+}
 
 /* ─── Dark Theme Overrides ───────────────────────── */
 .dark-theme .name-display { color: var(--color-text-inverse); }
