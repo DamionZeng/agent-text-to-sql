@@ -1,15 +1,15 @@
-import { createRouter, createWebHistory } from 'vue-router'
+﻿import { createRouter, createWebHistory } from 'vue-router'
 import Layout from '../layouts/MainLayout.vue'
 import DatasourceList from '../views/datasource/DatasourceList.vue'
 import DatasourceDetail from '../views/datasource/DatasourceDetail.vue'
 import ChatPage from '../views/chat/ChatPage.vue'
-import DashboardList from '../views/viz/DashboardList.vue'
-import DashboardEditor from '../views/viz/DashboardEditor.vue'
-import DashboardView from '../views/viz/DashboardView.vue'
+import DashboardList from '../views/viz_v2/DashboardList.vue'
+import DashboardEditor from '../views/viz_v2/DashboardEditor.vue'
+import DashboardView from '../views/viz_v2/DashboardView.vue'
 import DatasetList from '../views/dataset/DatasetList.vue'
 import DatasetEditor from '../views/dataset/DatasetEditor.vue'
-import DataScreenList from '../views/viz/DataScreenList.vue'
-import DataScreenEditor from '../views/viz/DataScreenEditor.vue'
+import DataScreenList from '../views/viz_v2/DataScreenList.vue'
+import DataScreenEditor from '../views/viz_v2/DataScreenEditor.vue'
 
 const routes = [
   {

@@ -263,6 +263,41 @@
         </div>
       </div>
     </div>
+
+    <!-- AI Creation Progress Overlay -->
+    <div class="ai-progress-overlay" v-if="aiGenerating">
+      <div class="ai-progress-card">
+        <h3 class="ai-progress-title">
+          <LoadingOutlined spin style="margin-right: 8px" />
+          AI 正在为您创建数据集...
+        </h3>
+
+        <div class="ai-flow">
+          <div
+            v-for="(stg, idx) in stages"
+            :key="idx"
+            class="flow-stage"
+            :class="'stage-' + stg.status"
+          >
+            <div class="flow-stage-icon">
+              <LoadingOutlined spin v-if="stg.status === 'running'" />
+              <span class="icon-check" v-else-if="stg.status === 'success'">&#10003;</span>
+              <span class="icon-error" v-else-if="stg.status === 'error'">&#10007;</span>
+              <span class="icon-pending" v-else>{{ idx + 1 }}</span>
+            </div>
+            <div class="flow-stage-label">{{ stg.label }}</div>
+            <div class="flow-arrow" v-if="idx < stages.length - 1">
+              <span>&#10132;</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="ai-progress-error" v-if="aiError">
+          <a-alert :message="aiError" type="error" show-icon />
+          <a-button type="primary" style="margin-top: 12px" @click="aiGenerating = false">返回编辑</a-button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -273,7 +308,7 @@ import { message } from 'ant-design-vue'
 import { 
   LeftOutlined, SearchOutlined, TableOutlined, CodeOutlined, CaretRightOutlined,
   CloudUploadOutlined, CloseOutlined, CaretDownOutlined, SwapOutlined, ReloadOutlined,
-  FolderOutlined
+  FolderOutlined, LoadingOutlined, RobotOutlined
 } from '@ant-design/icons-vue'
 import { useDataset } from '../../composables/dataset/useDataset'
 
@@ -295,6 +330,17 @@ const previewData = ref([])
 const currentMetadata = ref({ table: null, columns: [] })
 const currentSelectedTableName = ref(null)
 const highlightedNodeId = ref(null)
+
+// AI Generation State
+const aiGenerating = ref(false)
+const aiError = ref('')
+const stages = ref([
+  { id: 'extract', label: '抽取关键词', status: 'pending' },
+  { id: 'recall', label: '检索元数据', status: 'pending' },
+  { id: 'generate', label: '生成 SQL', status: 'pending' },
+  { id: 'validate', label: '验证与优化', status: 'pending' },
+  { id: 'execute', label: '执行查询', status: 'pending' }
+])
 
 const formData = reactive({
   name: '',
@@ -346,7 +392,9 @@ onMounted(async () => {
     datasources.value = dsData
     groups.value = groupData
 
-    if (route.params.id) {
+    if (route.query.ai === 'true') {
+      await startAiGeneration()
+    } else if (route.params.id) {
       const data = await fetchDataset(route.params.id)
       formData.name = data.name
       formData.datasource_id = data.datasource_id
@@ -375,6 +423,90 @@ onMounted(async () => {
     message.error('初始化失败: ' + err.message)
   }
 })
+
+const updateStageStatus = (label, status) => {
+  if (label === '抽取关键词') {
+    stages.value[0].status = status
+  } else if (label.includes('检索') || label.includes('合并')) {
+    stages.value[1].status = status
+  } else if (label === '生成SQL') {
+    stages.value[2].status = status
+  } else if (label.includes('验证') || label.includes('校正')) {
+    stages.value[3].status = status
+  } else if (label === '运行SQL') {
+    stages.value[4].status = status
+  }
+}
+
+const startAiGeneration = async () => {
+  const { ai, prompt, datasource_id, name, group_id } = route.query
+  if (ai !== 'true' || !prompt || !datasource_id) return
+
+  aiGenerating.value = true
+  aiError.value = ''
+  formData.name = name
+  formData.datasource_id = datasource_id
+  formData.group_id = group_id
+  
+  // Initialize stages
+  stages.value.forEach(s => s.status = 'pending')
+
+  try {
+    const response = await fetch('/api/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: prompt, datasource_id: datasource_id })
+    })
+
+    if (!response.ok) throw new Error('AI 服务请求失败')
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n\n')
+      buffer = lines.pop()
+
+      for (const line of lines) {
+        if (line.trim().startsWith('data: ')) {
+          const content = line.trim().substring(6)
+          try {
+            const chunk = JSON.parse(content)
+            if (chunk.type === 'progress') {
+              updateStageStatus(chunk.step, chunk.status)
+            } else if (chunk.type === 'sql') {
+              formData.info.sql = chunk.sql
+            } else if (chunk.type === 'result') {
+              previewData.value = chunk.data
+            } else if (chunk.type === 'error') {
+              aiError.value = chunk.message
+              return
+            }
+          } catch (e) {
+            console.error('解析AI响应出错', e)
+          }
+        }
+      }
+    }
+
+    // Finished
+    formData.type = 'custom_sql'
+    activeBottomTab.value = 'preview'
+    aiGenerating.value = false
+    message.success('AI 已为您生成数据集')
+    
+    // Fetch schema if it's a new creation
+    await onDatasourceChange(formData.datasource_id)
+  } catch (err) {
+    aiError.value = err.message
+    message.error('生成失败: ' + err.message)
+  }
+}
 
 const onDatasourceChange = async (dsId) => {
   if (!route.params.id || canvasTables.value.length === 0) {
@@ -874,6 +1006,47 @@ const handleSave = async () => {
 .input-label { font-size: 12px; color: #64748b; margin-bottom: 8px; font-weight: 500; }
 
 .placeholder-content { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+
+/* AI Progress Overlay Styles */
+.ai-progress-overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center; z-index: 2000;
+}
+.ai-progress-card {
+  width: 600px; background: #fff; border-radius: 16px; padding: 40px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+.ai-progress-title {
+  text-align: center; margin-bottom: 40px; font-size: 20px; font-weight: 600; color: #1f2937;
+}
+.ai-flow {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;
+}
+.flow-stage {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; flex: 1; position: relative;
+}
+.flow-stage-icon {
+  width: 32px; height: 32px; border-radius: 50%; background: #f3f4f6;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 600; color: #9ca3af; transition: all 0.3s;
+}
+.flow-stage-label { font-size: 12px; color: #6b7280; font-weight: 500; }
+
+.stage-running .flow-stage-icon { background: #eff6ff; color: #3b82f6; box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1); }
+.stage-running .flow-stage-label { color: #3b82f6; }
+
+.stage-success .flow-stage-icon { background: #ecfdf5; color: #10b981; }
+.stage-success .flow-stage-label { color: #059669; }
+.icon-check { font-size: 16px; }
+
+.stage-error .flow-stage-icon { background: #fef2f2; color: #ef4444; }
+.stage-error .flow-stage-label { color: #dc2626; }
+.icon-error { font-size: 16px; }
+
+.flow-arrow { color: #d1d5db; font-size: 14px; margin-top: -20px; }
+
+.ai-progress-error { margin-top: 30px; text-align: center; }
 
 :deep(.ant-table-thead > tr > th) { background: #fafafa; }
 </style>

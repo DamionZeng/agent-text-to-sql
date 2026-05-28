@@ -5,9 +5,14 @@
         <h2>数据集管理</h2>
         <p class="page-desc">构建和管理用于数据可视化的大屏数据集定义</p>
       </div>
-      <a-button type="primary" size="large" @click="goToCreate">
-        <PlusOutlined /> 新增数据集
-      </a-button>
+      <a-space size="middle">
+        <a-button @click="showAiCreateModal">
+          <RobotOutlined /> AI 创建数据集
+        </a-button>
+        <a-button type="primary" size="large" @click="goToCreate">
+          <PlusOutlined /> 新增数据集
+        </a-button>
+      </a-space>
     </div>
 
     <div class="main-layout">
@@ -119,18 +124,84 @@
         </a-form-item>
       </a-form>
     </a-modal>
+    <!-- AI Create Dataset Modal -->
+    <a-modal
+      v-model:open="showAiModal"
+      title="AI 创建数据集"
+      width="520px"
+      :footer="null"
+    >
+      <a-form layout="vertical">
+        <a-form-item label="数据集名称" required>
+          <a-input v-model:value="aiForm.name" placeholder="例如：销售额按月统计" />
+        </a-form-item>
+        <a-form-item label="选择数据源" required>
+          <a-select
+            v-model:value="aiForm.datasource_id"
+            placeholder="请选择数据源"
+            :loading="loadingDatasources"
+            style="width: 100%"
+          >
+            <a-select-option
+              v-for="ds in datasources"
+              :key="ds.id"
+              :value="ds.id"
+            >
+              {{ ds.name }}
+            </a-select-option>
+          </a-select>
+        </a-form-item>
+        <a-form-item label="所属分组">
+          <div class="group-tag-selector">
+            <a-tag 
+              v-for="g in groups" 
+              :key="g.id"
+              :color="aiForm.group_id === g.id ? 'blue' : 'default'"
+              class="clickable-tag"
+              @click="aiForm.group_id = g.id"
+            >
+              {{ g.name }}
+            </a-tag>
+            <a-tag 
+              :color="!aiForm.group_id || aiForm.group_id === 'default' ? 'blue' : 'default'"
+              class="clickable-tag"
+              @click="aiForm.group_id = 'default'"
+            >
+              默认分组
+            </a-tag>
+          </div>
+        </a-form-item>
+        <a-form-item label="描述你的数据集需求" required>
+          <a-textarea
+            v-model:value="aiForm.prompt"
+            placeholder="例如：统计2024年每个月的总销售额，按月份升序排列"
+            :rows="4"
+          />
+        </a-form-item>
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px;">
+          <a-button @click="showAiModal = false">取消</a-button>
+          <a-button 
+            type="primary" 
+            @click="handleAiCreate" 
+            :disabled="!aiForm.datasource_id || !aiForm.prompt || !aiForm.name"
+          >
+            开始生成
+          </a-button>
+        </div>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { PlusOutlined, SearchOutlined, FolderOutlined, DeleteOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, SearchOutlined, FolderOutlined, DeleteOutlined, RobotOutlined } from '@ant-design/icons-vue'
 import { useDataset } from '../../composables/dataset/useDataset'
 import { message } from 'ant-design-vue'
 
 const router = useRouter()
-const { datasets, loading, fetchList, deleteDataset, fetchGroups, fetchCounts, createGroup, deleteGroup } = useDataset()
+const { datasets, loading, fetchList, deleteDataset, fetchGroups, fetchCounts, createGroup, deleteGroup, fetchDatasources } = useDataset()
 
 const groupSearch = ref('')
 const groups = ref([])
@@ -141,6 +212,15 @@ const newGroupName = ref('')
 
 const totalDatasetCount = ref(0)
 const defaultGroupCount = ref(0)
+
+const showAiModal = ref(false)
+const loadingDatasources = ref(false)
+const datasources = ref([])
+const aiForm = reactive({
+  name: '',
+  datasource_id: undefined,
+  prompt: ''
+})
 
 const columns = [
   { title: '数据集名称', dataIndex: 'name', key: 'name' },
@@ -179,6 +259,43 @@ const onGroupSelect = async (groupId) => {
 }
 
 onMounted(loadData)
+
+const loadDatasources = async () => {
+  loadingDatasources.value = true
+  try {
+    datasources.value = await fetchDatasources()
+    if (datasources.value.length > 0 && !aiForm.datasource_id) {
+      aiForm.datasource_id = datasources.value[0].id
+    }
+  } catch (e) {
+    message.error('加载数据源失败')
+  } finally {
+    loadingDatasources.value = false
+  }
+}
+
+const showAiCreateModal = () => {
+  aiForm.name = ''
+  aiForm.prompt = ''
+  aiForm.group_id = activeGroup.value !== 'all' ? activeGroup.value : 'default'
+  showAiModal.value = true
+  loadDatasources()
+}
+
+const handleAiCreate = () => {
+  if (!aiForm.name || !aiForm.datasource_id || !aiForm.prompt) return
+  showAiModal.value = false
+  router.push({
+    path: '/dataset/create',
+    query: {
+      ai: 'true',
+      name: aiForm.name,
+      datasource_id: aiForm.datasource_id,
+      prompt: aiForm.prompt,
+      group_id: activeGroup.value !== 'all' && activeGroup.value !== 'default' ? activeGroup.value : undefined
+    }
+  })
+}
 
 const handleCreateGroup = async () => {
   if (!newGroupName.value.trim()) return message.warning('请输入分组名称')
@@ -358,6 +475,24 @@ const handleDelete = async (id) => {
   font-size: 12px;
   color: #ff4d4f;
   margin-left: 4px;
+}
+
+.group-tag-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.clickable-tag {
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s;
+}
+
+.clickable-tag:hover {
+  opacity: 0.8;
+  transform: translateY(-1px);
 }
 
 /* Content Styles */
