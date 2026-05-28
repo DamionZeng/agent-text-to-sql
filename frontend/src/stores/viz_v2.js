@@ -9,6 +9,7 @@ export const useVizStore = defineStore('viz', () => {
   const filters = ref([])
   const loading = ref(false)
   const pendingChanges = ref(false)
+  const _deletedPanelIds = ref([])
 
   const selectedPanelId = ref(null)
 
@@ -36,6 +37,7 @@ export const useVizStore = defineStore('viz', () => {
       dashboard.value = data.dashboard
       panels.value = data.panels || []
       filters.value = data.filters || []
+      _deletedPanelIds.value = []
       pendingChanges.value = false
       return data
     } finally {
@@ -76,6 +78,10 @@ export const useVizStore = defineStore('viz', () => {
   }
 
   function removePanelLocal(panelId) {
+    const panel = panels.value.find(p => p.id === panelId)
+    if (panel && !panel._isLocal) {
+      _deletedPanelIds.value.push(panelId)
+    }
     panels.value = panels.value.filter((p) => p.id !== panelId)
     if (selectedPanelId.value === panelId) {
       selectedPanelId.value = null
@@ -275,8 +281,13 @@ export const useVizStore = defineStore('viz', () => {
       }
     }
 
-    // 3. Delete panels that no longer exist (need to track deleted IDs)
-    // For now, we don't track deletions across reloads
+    // 3. Delete panels that were removed locally
+    for (const deletedId of _deletedPanelIds.value) {
+      await fetch(`${API_BASE}/dashboards/${dashboard.value.id}/panels/${deletedId}`, {
+        method: 'DELETE',
+      })
+    }
+    _deletedPanelIds.value = []
 
     pendingChanges.value = false
     return true

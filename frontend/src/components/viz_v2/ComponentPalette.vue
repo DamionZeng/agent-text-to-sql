@@ -1,68 +1,135 @@
 <template>
   <div class="component-palette">
-    <div class="palette-section">
-      <h4 class="palette-title">指标类</h4>
-      <div class="palette-grid">
-        <div v-for="item in metricTypes" :key="item.type" class="palette-item" draggable="true" @dragstart="onDragStart($event, item)" @dragend="onDragEnd" @click="onPaletteClick(item)">
-          <span class="palette-icon" v-html="item.icon"></span>
-          <span class="palette-label">{{ item.label }}</span>
+    <!-- 组件库 -->
+    <CollapsibleSection title="组件库" :default-expanded="true">
+      <template #icon>
+        <AppstoreOutlined class="header-icon" />
+      </template>
+
+      <div class="palette-section">
+        <h4 class="palette-title">指标类</h4>
+        <div class="palette-grid">
+          <div
+            v-for="item in metricTypes"
+            :key="item.type"
+            class="palette-item"
+            draggable="true"
+            @dragstart="onDragStart($event, item)"
+            @dragend="onDragEnd"
+            @click="onPaletteClick(item)"
+          >
+            <span class="palette-icon" v-html="item.icon"></span>
+            <span class="palette-label">{{ item.label }}</span>
+          </div>
         </div>
       </div>
-    </div>
-    <div class="palette-section">
-      <h4 class="palette-title">折线 / 柱状</h4>
-      <div class="palette-grid">
-        <div v-for="item in axisTypes" :key="item.type" class="palette-item" draggable="true" @dragstart="onDragStart($event, item)" @dragend="onDragEnd" @click="onPaletteClick(item)">
-          <span class="palette-icon" v-html="item.icon"></span>
-          <span class="palette-label">{{ item.label }}</span>
+
+      <div class="palette-section">
+        <h4 class="palette-title">折线 / 柱状</h4>
+        <div class="palette-grid">
+          <div
+            v-for="item in axisTypes"
+            :key="item.type"
+            class="palette-item"
+            draggable="true"
+            @dragstart="onDragStart($event, item)"
+            @dragend="onDragEnd"
+            @click="onPaletteClick(item)"
+          >
+            <span class="palette-icon" v-html="item.icon"></span>
+            <span class="palette-label">{{ item.label }}</span>
+          </div>
         </div>
       </div>
-    </div>
-    <div class="palette-section">
-      <h4 class="palette-title">饼图 / 环形</h4>
-      <div class="palette-grid">
-        <div v-for="item in pieTypes" :key="item.type" class="palette-item" draggable="true" @dragstart="onDragStart($event, item)" @dragend="onDragEnd" @click="onPaletteClick(item)">
-          <span class="palette-icon" v-html="item.icon"></span>
-          <span class="palette-label">{{ item.label }}</span>
+
+      <div class="palette-section">
+        <h4 class="palette-title">饼图 / 环形</h4>
+        <div class="palette-grid">
+          <div
+            v-for="item in pieTypes"
+            :key="item.type"
+            class="palette-item"
+            draggable="true"
+            @dragstart="onDragStart($event, item)"
+            @dragend="onDragEnd"
+            @click="onPaletteClick(item)"
+          >
+            <span class="palette-icon" v-html="item.icon"></span>
+            <span class="palette-label">{{ item.label }}</span>
+          </div>
         </div>
       </div>
-    </div>
-    <div class="palette-section">
-      <h4 class="palette-title">表格类</h4>
-      <div class="palette-grid">
-        <div v-for="item in tableTypes" :key="item.type" class="palette-item" draggable="true" @dragstart="onDragStart($event, item)" @dragend="onDragEnd" @click="onPaletteClick(item)">
-          <span class="palette-icon" v-html="item.icon"></span>
-          <span class="palette-label">{{ item.label }}</span>
+
+      <div class="palette-section">
+        <h4 class="palette-title">表格类</h4>
+        <div class="palette-grid">
+          <div
+            v-for="item in tableTypes"
+            :key="item.type"
+            class="palette-item"
+            draggable="true"
+            @dragstart="onDragStart($event, item)"
+            @dragend="onDragEnd"
+            @click="onPaletteClick(item)"
+          >
+            <span class="palette-icon" v-html="item.icon"></span>
+            <span class="palette-label">{{ item.label }}</span>
+          </div>
         </div>
       </div>
-    </div>
-    <div class="palette-section">
-      <h4 class="palette-title">其他组件</h4>
-      <div class="palette-grid">
-        <div v-for="item in otherTypes" :key="item.type" class="palette-item" draggable="true" @dragstart="onDragStart($event, item)" @dragend="onDragEnd" @click="onPaletteClick(item)">
-          <span class="palette-icon" v-html="item.icon"></span>
-          <span class="palette-label">{{ item.label }}</span>
+
+      <div class="palette-section">
+        <h4 class="palette-title">其他组件</h4>
+        <div class="palette-grid">
+          <div
+            v-for="item in otherTypes"
+            :key="item.type"
+            class="palette-item"
+            draggable="true"
+            @dragstart="onDragStart($event, item)"
+            @dragend="onDragEnd"
+            @click="onPaletteClick(item)"
+          >
+            <span class="palette-icon" v-html="item.icon"></span>
+            <span class="palette-label">{{ item.label }}</span>
+          </div>
         </div>
       </div>
-    </div>
-    <a-divider />
-    <div class="palette-section">
-      <h4 class="palette-title">图层的管理</h4>
+    </CollapsibleSection>
+
+    <!-- 图层管理 -->
+    <CollapsibleSection title="图层管理" :default-expanded="true">
+      <template #icon>
+        <ContainerOutlined class="header-icon" />
+      </template>
+
       <div class="layer-list">
-        <div v-for="(panel, index) in panels" :key="panel.id" class="layer-item" :class="{ active: selectedPanelId === panel.id }" @click="$emit('select-panel', panel.id)">
+        <div
+          v-for="(panel, index) in panels"
+          :key="panel.id"
+          class="layer-item"
+          :class="{ active: selectedPanelId === panel.id }"
+          @click="$emit('select-panel', panel.id)"
+        >
           <span class="layer-index">{{ index + 1 }}</span>
           <span class="layer-icon" v-html="getLayerIcon(panel)"></span>
           <span class="layer-name">{{ panel.title || '未命名面板' }}</span>
-          <a-button type="text" size="small" danger @click.stop="$emit('remove-panel', panel.id)"><template #icon><CloseOutlined /></template></a-button>
+          <a-button type="text" size="small" danger @click.stop="$emit('remove-panel', panel.id)">
+            <template #icon><CloseOutlined /></template>
+          </a-button>
         </div>
+        <a-empty v-if="panels.length === 0" description="暂无图层" :image="simpleImage" style="margin-top: 12px" />
       </div>
-    </div>
+    </CollapsibleSection>
   </div>
 </template>
+
 <script setup>
-import { ref } from 'vue'
-import { CloseOutlined } from '@ant-design/icons-vue'
+import { ref, h } from 'vue'
+import { CloseOutlined, AppstoreOutlined, ContainerOutlined } from '@ant-design/icons-vue'
+import { Empty } from 'ant-design-vue'
 import { chartTypeNames, getResolvedChartType } from './chartTypeRegistry.js'
+import CollapsibleSection from './CollapsibleSection.vue'
 
 const props = defineProps({
   panels: { type: Array, default: () => [] },
@@ -72,6 +139,7 @@ const props = defineProps({
 const emit = defineEmits(['add-chart', 'select-panel', 'remove-panel'])
 
 const isDragging = ref(false)
+const simpleImage = Empty.PRESENTED_IMAGE_SIMPLE
 
 const iconSVG = {
   bar: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>',
@@ -142,20 +210,100 @@ function onPaletteClick(item) {
 </script>
 
 <style scoped>
-.component-palette { padding: 12px; height: 100%; overflow-y: auto; }
-.palette-section { margin-bottom: 12px; }
-.palette-title { font-size: 11px; font-weight: 600; color: var(--color-text-tertiary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
-.palette-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
-.palette-item { display: flex; flex-direction: column; align-items: center; padding: 10px 6px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); cursor: grab; transition: all 0.2s; background: var(--color-bg-surface); }
-.palette-item:hover { border-color: var(--color-primary); background: var(--color-primary-light); box-shadow: var(--shadow-sm); }
-.palette-item:active { cursor: grabbing; }
-.palette-icon { display: flex; align-items: center; margin-bottom: 4px; color: var(--color-text-secondary); }
-.palette-label { font-size: 11px; color: var(--color-text-secondary); }
-.layer-list { display: flex; flex-direction: column; gap: 2px; }
-.layer-item { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: var(--radius-sm); cursor: pointer; transition: all 0.15s; border: 1px solid transparent; font-size: 13px; }
-.layer-item:hover { background: var(--color-bg-page); }
-.layer-item.active { background: var(--color-primary-light); border-color: var(--color-primary); }
-.layer-index { font-size: 11px; color: var(--color-text-tertiary); width: 16px; text-align: center; }
-.layer-icon { display: flex; align-items: center; color: var(--color-text-tertiary); }
-.layer-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.component-palette {
+  height: 100%;
+  overflow-y: auto;
+}
+
+.palette-section {
+  margin-bottom: 12px;
+}
+.palette-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-tertiary);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.palette-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+.palette-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: grab;
+  transition: all 0.2s;
+  background: var(--color-bg-surface);
+}
+.palette-item:hover {
+  border-color: var(--color-primary);
+  background: var(--color-primary-light);
+  box-shadow: var(--shadow-sm);
+}
+.palette-item:active {
+  cursor: grabbing;
+}
+.palette-icon {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+  color: var(--color-text-secondary);
+}
+.palette-label {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.layer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.layer-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+  border: 1px solid transparent;
+  font-size: 13px;
+}
+.layer-item:hover {
+  background: var(--color-bg-page);
+}
+.layer-item.active {
+  background: var(--color-primary-light);
+  border-color: var(--color-primary);
+}
+.layer-index {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  width: 16px;
+  text-align: center;
+}
+.layer-icon {
+  display: flex;
+  align-items: center;
+  color: var(--color-text-tertiary);
+}
+.layer-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-icon {
+  font-size: 14px;
+  color: var(--color-text-tertiary);
+}
 </style>

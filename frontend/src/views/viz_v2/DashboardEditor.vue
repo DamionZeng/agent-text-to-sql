@@ -159,6 +159,9 @@
 
       <!-- Left Sidebar (full) -->
       <div class="left-sidebar-panel" :class="{ 'left-hidden': leftSidebarCollapsed }">
+        <div class="left-sidebar-header">
+          <span class="sidebar-header-title">组件面板</span>
+        </div>
         <div class="left-sidebar-inner">
           <ComponentPalette
             :panels="store.panels"
@@ -1060,6 +1063,14 @@ watch(() => store.panels.filter(p => p.hidden).length, () => {
 }
 .dark-theme .left-sidebar-panel { background: var(--color-sidebar-hover); border-color: rgba(255,255,255,0.06); }
 .left-sidebar-panel.left-hidden { width: 0; opacity: 0; padding: 0; border: none; }
+.left-sidebar-header {
+  display: flex; align-items: center; padding: 10px 14px;
+  border-bottom: 1px solid var(--color-border-light);
+  flex-shrink: 0; background: var(--color-bg-surface);
+}
+.dark-theme .left-sidebar-header { border-color: rgba(255,255,255,0.06); background: var(--color-sidebar-hover); }
+.sidebar-header-title { font-size: 14px; font-weight: 600; color: var(--color-text-primary); }
+.dark-theme .sidebar-header-title { color: rgba(255,255,255,0.85); }
 .left-sidebar-inner { flex: 1; overflow-y: auto; }
 .sidebar-bottom-toggle { display: flex; justify-content: flex-end; padding: 4px; border-top: 1px solid var(--color-border-light); }
 .dark-theme .sidebar-bottom-toggle { border-color: rgba(255,255,255,0.06); }
