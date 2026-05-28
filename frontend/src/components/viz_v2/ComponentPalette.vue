@@ -62,6 +62,7 @@
 <script setup>
 import { ref } from 'vue'
 import { CloseOutlined } from '@ant-design/icons-vue'
+import { chartTypeNames, getResolvedChartType } from './chartTypeRegistry.js'
 
 const props = defineProps({
   panels: { type: Array, default: () => [] },
@@ -119,39 +120,8 @@ const otherTypes = [
 ]
 
 function getLayerIcon(panel) {
-  // Determine chart type from panel metadata
-  const type = panel._chartType || panel.chart_type || ''
-  
-  // Map known type strings to icon keys
-  const typeMap = {
-    'bar': 'bar', 'line': 'line', 'pie': 'pie', 'doughnut': 'doughnut',
-    'scatter': 'scatter', 'radar': 'radar', 'funnel': 'funnel', 'gauge': 'gauge',
-    'number_card': 'number_card', 'table': 'table', 'heatmap': 'heatmap',
-    'text': 'text', 'image': 'image', 'video': 'video', 'iframe': 'iframe', 'container': 'container'
-  }
-  
-  let iconKey = typeMap[type] || null
-  
-  // Fallback: try to match from panel title (Chinese names)
-  if (!iconKey) {
-    const title = panel.title || ''
-    const cnMap = {
-      '柱状图': 'bar', '折线图': 'line', '饼图': 'pie', '环形图': 'doughnut',
-      '散点图': 'scatter', '雷达图': 'radar', '漏斗图': 'funnel', '仪表盘': 'gauge',
-      '数字卡片': 'number_card', '数据表格': 'table', '热力图': 'heatmap',
-      '富文本': 'text', '图片': 'image', '视频': 'video', '网页': 'iframe', '容器': 'container',
-      'Tab': 'container', '文本': 'text'
-    }
-    for (const [cn, key] of Object.entries(cnMap)) {
-      if (title.includes(cn)) {
-        iconKey = key
-        break
-      }
-    }
-  }
-  
-  // Default to a generic chart icon (not bar)
-  const svg = iconSVG[iconKey] || iconSVG['bar']
+  const type = getResolvedChartType(panel, null)
+  const svg = iconSVG[type] || iconSVG['bar']
   return svg.replace(/width="18"/g, 'width="14"').replace(/height="18"/g, 'height="14"')
 }
 

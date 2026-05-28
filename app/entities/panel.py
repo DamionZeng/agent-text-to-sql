@@ -7,6 +7,7 @@ class Panel:
     id: str
     dashboard_id: str
     chart_config_id: str | None = None
+    chart_type: str | None = None
     title: str | None = None
     layout_x: int = 0
     layout_y: int = 0

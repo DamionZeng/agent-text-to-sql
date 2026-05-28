@@ -64,6 +64,7 @@ class PanelRepository:
                     layout_w=panel.layout_w,
                     layout_h=panel.layout_h,
                     sort_order=panel.sort_order,
+                    chart_type=panel.chart_type,
                 )
             )
             await self.session.execute(stmt)

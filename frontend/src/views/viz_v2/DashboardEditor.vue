@@ -277,6 +277,7 @@ import MultiplexingModal from '../../components/viz_v2/MultiplexingModal.vue'
 import HiddenListPanel from '../../components/viz_v2/HiddenListPanel.vue'
 import ContextMenu from './components/ContextMenu.vue'
 import { GridLayout, GridItem } from 'vue-grid-layout-v3'
+import { chartTypeNames, getResolvedChartType } from '../../components/viz_v2/chartTypeRegistry.js'
 
 
 const router = useRouter()
@@ -456,13 +457,13 @@ function finishEditName() { isEditingName.value = false }
 async function openChartSelector() {
   if (!store.dashboard) return
   try {
-    const panel = await store.addPanel(store.dashboard.id, null, '柱状图', { x: 0, y: 0, w: 6, h: 4 })
-    if (panel) panel._chartType = 'bar'
+    const panel = await store.addPanel(store.dashboard.id, null, '柱状图', { x: 0, y: 0, w: 6, h: 4 }, 'bar')
+    if (panel) { panel._chartType = 'bar'; panel.chart_type = 'bar' }
     takeSnapshot()
   } catch (e) {
     store.panels.push({
       id: 'temp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
-      title: '柱状图', _chartType: 'bar',
+      title: '柱状图', _chartType: 'bar', chart_type: 'bar',
       layout_x: 0, layout_y: 0, layout_w: 6, layout_h: 4,
       hidden: false, chart_config_id: null,
     })
@@ -477,13 +478,13 @@ function openFilterDialog() {
 async function addTextComponent() {
   if (!store.dashboard) return
   try {
-    const panel = await store.addPanel(store.dashboard.id, null, '文本', { x: 0, y: 0, w: 4, h: 2 })
-    if (panel) panel._chartType = 'text'
+    const panel = await store.addPanel(store.dashboard.id, null, '文本', { x: 0, y: 0, w: 4, h: 2 }, 'text')
+    if (panel) { panel._chartType = 'text'; panel.chart_type = 'text' }
     takeSnapshot()
   } catch (e) {
     store.panels.push({
       id: 'temp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
-      title: '文本', _chartType: 'text',
+      title: '文本', _chartType: 'text', chart_type: 'text',
       layout_x: 0, layout_y: 0, layout_w: 4, layout_h: 2,
       hidden: false, chart_config_id: null,
     })
@@ -494,13 +495,13 @@ async function addTextComponent() {
 async function openMediaDialog() {
   if (!store.dashboard) return
   try {
-    const panel = await store.addPanel(store.dashboard.id, null, '图片', { x: 0, y: 0, w: 6, h: 5 })
-    if (panel) panel._chartType = 'image'
+    const panel = await store.addPanel(store.dashboard.id, null, '图片', { x: 0, y: 0, w: 6, h: 5 }, 'image')
+    if (panel) { panel._chartType = 'image'; panel.chart_type = 'image' }
     takeSnapshot()
   } catch (e) {
     store.panels.push({
       id: 'temp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
-      title: '图片', _chartType: 'image',
+      title: '图片', _chartType: 'image', chart_type: 'image',
       layout_x: 0, layout_y: 0, layout_w: 6, layout_h: 5,
       hidden: false, chart_config_id: null,
     })
@@ -511,13 +512,13 @@ async function openMediaDialog() {
 async function addContainer() {
   if (!store.dashboard) return
   try {
-    const panel = await store.addPanel(store.dashboard.id, null, '容器', { x: 0, y: 0, w: 12, h: 6 })
-    if (panel) panel._chartType = 'container'
+    const panel = await store.addPanel(store.dashboard.id, null, '容器', { x: 0, y: 0, w: 12, h: 6 }, 'container')
+    if (panel) { panel._chartType = 'container'; panel.chart_type = 'container' }
     takeSnapshot()
   } catch (e) {
     store.panels.push({
       id: 'temp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
-      title: '容器', _chartType: 'container',
+      title: '容器', _chartType: 'container', chart_type: 'container',
       layout_x: 0, layout_y: 0, layout_w: 12, layout_h: 6,
       hidden: false, chart_config_id: null,
     })
@@ -663,17 +664,11 @@ function onEditPanel(panelId) {
 async function handleAddChartFromPalette(chartType) {
   if (!store.dashboard) return
   
-  const chartTypeNames = {
-    bar: '柱状图', line: '折线图', pie: '饼图', doughnut: '环形图',
-    scatter: '散点图', radar: '雷达图', funnel: '漏斗图', gauge: '仪表盘',
-    number_card: '数字卡片', table: '数据表格', heatmap: '热力图',
-    text: '文本', image: '图片', video: '视频', iframe: '网页', container: '容器'
-  }
   const title = chartTypeNames[chartType] || chartType || '图表'
   
   try {
-    const panel = await store.addPanel(store.dashboard.id, null, title, { x: 0, y: 0, w: 6, h: 4 })
-    if (panel) panel._chartType = chartType
+    const panel = await store.addPanel(store.dashboard.id, null, title, { x: 0, y: 0, w: 6, h: 4 }, chartType)
+    if (panel) { panel._chartType = chartType; panel.chart_type = chartType }
     takeSnapshot()
   } catch (e) {
     console.error('添加面板失败', e)
@@ -682,6 +677,7 @@ async function handleAddChartFromPalette(chartType) {
       id: tempId,
       title,
       _chartType: chartType,
+      chart_type: chartType,
       layout_x: 0, layout_y: 0, layout_w: 6, layout_h: 4,
       hidden: false,
       chart_config_id: null,
@@ -706,13 +702,17 @@ async function handleCopyPanel(panelId) {
   const panel = store.panels.find(p => p.id === panelId)
   if (!panel || !store.dashboard) return
   try {
+    const ct = panel._chartType || panel.chart_type
     const copied = await store.addPanel(store.dashboard.id, panel.chart_config_id, (panel.title || '图表') + ' (副本)', {
       x: (panel.layout_x || 0) + 1,
       y: (panel.layout_y || 0) + 1,
       w: panel.layout_w || 6,
       h: panel.layout_h || 4,
-    })
-    if (copied) copied._chartType = panel._chartType || panel.chart_type
+    }, ct)
+    if (copied) {
+      copied._chartType = ct
+      copied.chart_type = ct
+    }
     takeSnapshot()
   } catch (e) { console.error('复制面板失败', e) }
 }
@@ -767,17 +767,11 @@ async function onDrop(event) {
 
   const { x, y } = calcDropGridXY(event.clientX, event.clientY)
 
-  const chartTypeNames = {
-    bar: '柱状图', line: '折线图', pie: '饼图', doughnut: '环形图',
-    scatter: '散点图', radar: '雷达图', funnel: '漏斗图', gauge: '仪表盘',
-    number_card: '数字卡片', table: '数据表格', heatmap: '热力图',
-    text: '文本', image: '图片', video: '视频', iframe: '网页', container: '容器'
-  }
   const title = chartTypeNames[chartType] || chartType || '图表'
   
   try {
-    const panel = await store.addPanel(store.dashboard.id, null, title, { x, y, w: 6, h: 4 })
-    if (panel) panel._chartType = chartType
+    const panel = await store.addPanel(store.dashboard.id, null, title, { x, y, w: 6, h: 4 }, chartType)
+    if (panel) { panel._chartType = chartType; panel.chart_type = chartType }
     takeSnapshot()
   } catch (e) {
     console.error('添加面板失败', e)
@@ -786,6 +780,7 @@ async function onDrop(event) {
       id: tempId,
       title,
       _chartType: chartType,
+      chart_type: chartType,
       layout_x: x, layout_y: y, layout_w: 6, layout_h: 4,
       hidden: false,
       chart_config_id: null,
@@ -857,26 +852,33 @@ function handleRestoreHidden(panelId) {
 // ─── Config Panel ─────────────────────────────────
 async function handleApplyConfig(formData) {
   if (!store.selectedPanel) return
+  const panelId = store.selectedPanelId
   const panel = store.selectedPanel
   try {
-    await store.updatePanelConfig(store.selectedPanelId, {
+    await store.updatePanelConfig(panelId, {
       title: formData.title,
       layout_x: formData.layout_x,
       layout_y: formData.layout_y,
       layout_w: formData.layout_w,
       layout_h: formData.layout_h,
       sort_order: formData.sort_order,
+      chart_type: formData.chartType,
     })
+    const updatedPanel = store.panels.find(p => p.id === panelId)
+    if (updatedPanel) {
+      updatedPanel._chartType = formData.chartType
+      updatedPanel.chart_type = formData.chartType
+    }
     if (panel.chart_config_id) {
       await store.updateChartConfig(panel.chart_config_id, {
         chart_type: formData.chartType,
         sql_text: formData.sql_text,
       })
-      chartDataCache.value[store.selectedPanelId] = {
-        chart_type: formData.chartType || 'bar',
-        sql_text: formData.sql_text || '',
-        echarts_option: chartDataCache.value[store.selectedPanelId]?.echarts_option || {},
-      }
+    }
+    chartDataCache.value[panelId] = {
+      chart_type: formData.chartType || 'bar',
+      sql_text: formData.sql_text || '',
+      echarts_option: chartDataCache.value[panelId]?.echarts_option || {},
     }
     takeSnapshot()
   } catch (e) { console.error('应用配置失败', e) }
@@ -905,10 +907,12 @@ async function handleMultiplexingConfirm({ dashboardId, panelId }) {
     const data = await res.json()
     const sourcePanel = (data.panels || []).find(p => p.id === panelId)
     if (sourcePanel) {
-      await store.addPanel(store.dashboard.id, sourcePanel.chart_config_id,
+      const ct = sourcePanel._chartType || sourcePanel.chart_type
+      const copied = await store.addPanel(store.dashboard.id, sourcePanel.chart_config_id,
         (sourcePanel.title || '图表') + ' (复用)', {
         x: 0, y: 0, w: sourcePanel.layout_w || 6, h: sourcePanel.layout_h || 4,
-      })
+      }, ct)
+      if (copied) { copied._chartType = ct; copied.chart_type = ct }
       takeSnapshot()
     }
   } catch (e) { console.error('复用组件失败', e) }

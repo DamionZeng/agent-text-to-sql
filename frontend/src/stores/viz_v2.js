@@ -79,9 +79,10 @@ export const useVizStore = defineStore('viz', () => {
     })
   }
 
-  async function addPanel(dashboardId, chartConfigId, title = null, layout = {}) {
+  async function addPanel(dashboardId, chartConfigId, title = null, layout = {}, chartType = null) {
     const body = {
       chart_config_id: chartConfigId,
+      chart_type: chartType,
       title,
       layout_x: layout.x || 0,
       layout_y: layout.y || 0,
@@ -95,6 +96,11 @@ export const useVizStore = defineStore('viz', () => {
     })
     if (!res.ok) throw new Error('添加面板失败')
     const panel = await res.json()
+    // 确保前端图表类型状态正确（后端可能未返回或返回 null）
+    if (chartType) {
+      panel._chartType = chartType
+      panel.chart_type = chartType
+    }
     panels.value.push(panel)
     return panel
   }
@@ -111,6 +117,7 @@ export const useVizStore = defineStore('viz', () => {
   }
 
   async function updatePanelConfig(panelId, updates) {
+    const oldPanel = panels.value.find(p => p.id === panelId)
     const res = await fetch(`${API_BASE}/dashboards/${dashboard.value.id}/panels/${panelId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -118,6 +125,9 @@ export const useVizStore = defineStore('viz', () => {
     })
     if (!res.ok) throw new Error('更新面板失败')
     const updated = await res.json()
+    if (oldPanel) {
+      updated._chartType = oldPanel._chartType || updated.chart_type
+    }
     panels.value = panels.value.map((p) => (p.id === panelId ? updated : p))
   }
 

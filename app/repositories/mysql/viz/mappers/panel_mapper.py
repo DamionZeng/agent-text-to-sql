@@ -11,6 +11,7 @@ class PanelMapper:
             id=model.id,
             dashboard_id=model.dashboard_id,
             chart_config_id=model.chart_config_id,
+            chart_type=model.chart_type,
             title=model.title,
             layout_x=model.layout_x or 0,
             layout_y=model.layout_y or 0,

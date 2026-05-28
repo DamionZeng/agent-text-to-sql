@@ -30,6 +30,11 @@ class PanelMySQL(Base):
         nullable=True,
         comment="面板标题"
     )
+    chart_type: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="图表类型"
+    )
     layout_x: Mapped[int] = mapped_column(
         Integer,
         default=0,

@@ -9,14 +9,7 @@
             </a-form-item>
             <a-form-item label="图表类型">
               <a-select v-model:value="form.chartType" placeholder="选择图表类型">
-                <a-select-option value="bar">柱状图</a-select-option>
-                <a-select-option value="line">折线图</a-select-option>
-                <a-select-option value="pie">饼图</a-select-option>
-                <a-select-option value="scatter">散点图</a-select-option>
-                <a-select-option value="radar">雷达图</a-select-option>
-                <a-select-option value="number_card">数字卡片</a-select-option>
-                <a-select-option value="table">数据表格</a-select-option>
-                <a-select-option value="text">文本</a-select-option>
+                <a-select-option v-for="(label, type) in chartTypeNames" :key="type" :value="type">{{ label }}</a-select-option>
               </a-select>
             </a-form-item>
           </a-form>
@@ -105,6 +98,7 @@
 
 <script setup>
 import { ref, watch } from 'vue'
+import { chartTypeNames, getResolvedChartType } from './chartTypeRegistry.js'
 
 const props = defineProps({
   panel: { type: Object, default: null },
@@ -130,18 +124,18 @@ const form = ref({
 })
 
 watch(
-  () => props.panel,
-  (panel) => {
+  [() => props.panel, () => props.chartData],
+  ([panel, chartData]) => {
     if (panel) {
       form.value = {
         title: panel.title || '',
-        chartType: props.chartData?.chart_type || '',
+        chartType: getResolvedChartType(panel, chartData),
         layout_x: panel.layout_x || 0,
         layout_y: panel.layout_y || 0,
         layout_w: panel.layout_w || 6,
         layout_h: panel.layout_h || 4,
         datasource_id: props.dashboard?.datasource_id || '',
-        sql_text: props.chartData?.sql_text || '',
+        sql_text: chartData?.sql_text || '',
         refresh_interval: 0,
         sort_order: panel.sort_order || 0,
       }

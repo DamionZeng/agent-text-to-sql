@@ -34,6 +34,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { MoreOutlined, EditOutlined, CopyOutlined, DeleteOutlined, EyeInvisibleOutlined } from '@ant-design/icons-vue'
+import { getResolvedChartType } from './chartTypeRegistry.js'
 import ChartWidget from './charts/ChartWidget.vue'
 import NumberCardWidget from './charts/NumberCardWidget.vue'
 import TableWidget from './charts/TableWidget.vue'
@@ -71,7 +72,7 @@ const chartTypeIcons = {
 }
 
 const resolvedType = computed(() => {
-  return props.panel._chartType || props.panel.chart_type || (props.chartData && props.chartData.chart_type) || 'bar'
+  return getResolvedChartType(props.panel, props.chartData)
 })
 
 const emptyIconSvg = computed(() => {

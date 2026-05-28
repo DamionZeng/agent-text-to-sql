@@ -91,6 +91,7 @@ class DashboardGenerateRequest(BaseModel):
 
 class PanelCreateRequest(BaseModel):
     chart_config_id: str | None = Field(None, description="关联图表配置ID")
+    chart_type: str | None = Field(None, description="图表类型")
     title: str | None = Field(None, description="面板标题")
     layout_x: int = Field(0, ge=0, description="栅格x坐标")
     layout_y: int = Field(0, ge=0, description="栅格y坐标")
@@ -101,6 +102,7 @@ class PanelCreateRequest(BaseModel):
 
 class PanelUpdateRequest(BaseModel):
     chart_config_id: str | None = Field(None, description="关联图表配置ID")
+    chart_type: str | None = Field(None, description="图表类型")
     title: str | None = Field(None, description="面板标题")
     layout_x: int | None = Field(None, ge=0, description="栅格x坐标")
     layout_y: int | None = Field(None, ge=0, description="栅格y坐标")
@@ -117,6 +119,7 @@ class PanelResponse(BaseModel):
     id: str
     dashboard_id: str
     chart_config_id: str | None = None
+    chart_type: str | None = None
     title: str | None = None
     layout_x: int = 0
     layout_y: int = 0
